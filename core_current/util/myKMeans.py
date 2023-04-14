@@ -1,4 +1,4 @@
-# 2023.04.14
+# 2021.05.10
 # change inv_predict to inverse_perdict
 # https://www.kdnuggets.com/2021/01/k-means-faster-lower-error-scikit-learn.html
 # faster kmeans
