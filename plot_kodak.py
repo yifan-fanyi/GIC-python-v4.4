@@ -51,9 +51,9 @@ def plot_benchmark():
     #     d = pickle.load(f)
     # plt.plot(d['bpp'][40:], d['psnr'][40:], label='H264 256x256')
 
-    # with open('/Users/alex/Desktop/proj/evl/evl_h265_st_768x512.pkl','rb') as f:
-    #     d = pickle.load(f)
-    # plt.plot(d['bpp'][40:], d['psnr'][40:], label='H265 768x512')
+    with open('/Users/alex/Desktop/proj/evl/evl_h265_st_768x512.pkl','rb') as f:
+        d = pickle.load(f)
+    plt.plot(d['bpp'][40:], d['psnr'][40:], label='H265 768x512')
     # with open('/Users/alex/Desktop/proj/evl/evl_h265_st_256x256.pkl','rb') as f:
     #     d = pickle.load(f)
     # plt.plot(d['bpp'][40:], d['psnr'][40:], label='H265 256x256')

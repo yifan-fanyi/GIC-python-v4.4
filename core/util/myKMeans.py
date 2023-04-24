@@ -1,4 +1,4 @@
-# 2023.04.14
+# 2021.05.10
 # change inv_predict to inverse_perdict
 # https://www.kdnuggets.com/2021/01/k-means-faster-lower-error-scikit-learn.html
 # faster kmeans
@@ -15,7 +15,7 @@ print('verbose=True')
 
 def Cpredict(X, cent, returnDist=False):
     X = np.ascontiguousarray(X.astype('float32'))
-    cent = np.ascontiguousarray(cent.astype('float16'))
+    cent = np.ascontiguousarray(cent.astype('float32'))
     index = faiss.IndexFlatL2(cent.shape[1]) 
     index.add(cent)             
     d, I = index.search(X, 1)
@@ -164,10 +164,11 @@ class myKMeans():
             self.n_clusters = len(cluster_centers)
             self.saveObj = False
             self.sort = False
-        if self.saveObj == False:
-            l = self.Cpredict(X)
-        else:
-            l = self.KM.predict(X)
+        if cluster_centers is None:
+            if self.saveObj == False:
+                l = self.Cpredict(X)
+            else:
+                l = self.KM.predict(X)
         if self.sort == 1:
             mp, imp = sort_by_hist(l, self.n_clusters)
         if self.sort == 2:
