@@ -27,11 +27,11 @@ class Huffman():
         self.inv_dict = {v: k for k, v in self.dict.items()}
         
     def fit(self, X, hist=None, p2=True):
-        X = np.array(X)
-        X = X.astype('int16')
         if hist is not None:
             self.hist = hist
         else:
+            X = np.array(X)
+            X = X.astype('int16')   
             bins = max(len(np.unique(X)), np.max(X))
             if p2 == True and np.log2(bins) - np.trunc(np.log2(bins)) > 1e-5:
                 bins = pow(2, (int)(np.log2(bins))+1)
