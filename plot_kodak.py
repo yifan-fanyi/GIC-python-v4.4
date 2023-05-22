@@ -53,7 +53,7 @@ def plot_benchmark():
 
     with open('/Users/alex/Desktop/proj/evl/evl_h265_st_768x512.pkl','rb') as f:
         d = pickle.load(f)
-    plt.plot(d['bpp'][40:], d['psnr'][40:], label='H265 768x512')
+    # plt.plot(d['bpp'][40:], d['psnr'][40:], label='H265 768x512')
     # with open('/Users/alex/Desktop/proj/evl/evl_h265_st_256x256.pkl','rb') as f:
     #     d = pickle.load(f)
     # plt.plot(d['bpp'][40:], d['psnr'][40:], label='H265 256x256')
@@ -194,7 +194,7 @@ if __name__ == "__main__":
     plot(m2023_03_18_24_33_33_0413, 'm2023_03_18_24_33_33_0413', True)
     # plot(m2023_03_13_18_09_11, 'm2023_03_13_18_09_11', True)
 
-    plot(m2023_03_18_24_33_33_in_train, 'm2023_03_18_24_33_33_in_train', True)
+    # plot(m2023_03_18_24_33_33_in_train, 'm2023_03_18_24_33_33_in_train', True)
     # plot(m2023_03_18_24_33_33a, 'm2023_03_18_24_33_33a', True)
     plot(bpg_m2023_03_18_24_33_33, 'bpg_m2023_03_18_24_33_33', False)
     # plot(webp_m2023_03_18_24_33_33, 'webp_m2023_03_18_24_33_33', False)

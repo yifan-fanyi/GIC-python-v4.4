@@ -5,14 +5,15 @@ import pickle
 import os
 from core.util import Time
 import pickle
-with open('name.pkl', 'rb') as f:
-    d = pickle.load(f)
-r = d['data_root']
+# with open('name.pkl', 'rb') as f:
+#     d = pickle.load(f)
+# r = d['data_root']
+r=''
 Imagenet_pkl = r + 'imagenet'
 CLIC_pkl = r+'clic'
 CLIC = r+'CLIC/'
 Holopix50k = r+"Holopix50k/"
-
+CLIC = '/Users/alex/Desktop/proj/data/'
 @Time
 def load_imagenet(ct):
     Y8, Y32 = [], []
