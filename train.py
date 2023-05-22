@@ -21,16 +21,16 @@ def train_one_vq(root, X, win, p_win, n_clusters, n_file, Lagrange_multip):
                                 size=X.shape[1], 
                                 win=win, 
                                 datatype="SHORT", 
-                                frame_each_file=1000, 
-                                n_frames=200).fit(folder=root+'/'+str(X.shape[1])+'_'+str(p_win), 
-                                                file_list=['test_short1.data', 'test_short2.data'])
+                                frame_each_file=200, 
+                                n_frames=100).fit(folder=root+'/'+str(X.shape[1])+'_'+str(p_win), 
+                                                file_list=file_list)
         with open(root+'/model/dkm_'+str(X.shape[1])+'_'+str(win)+'.model','wb') as f:
             pickle.dump(dkm, f, 4)
     try:
         with open(root+'/model/vq'+str(X.shape[1])+'_'+str(win)+'.model','rb') as f:
             vq = pickle.load(f)
     except:
-        vq = VQ_noT(n_clusters_list=[n_clusters], win_list=[win], n_dim_list=[win**2*3], Lagrange_multip=Lagrange_multip, acc_bpp=0)
+        vq = VQ_noT(n_clusters_list=[[n_clusters]], win_list=[win], n_dim_list=[[win**2*3]], Lagrange_multip=Lagrange_multip, acc_bpp=0)
         vq.fit(dkm, X)
         with open(root+'/model/vq_'+str(X.shape[1])+'_'+str(win)+'.model','wb') as f:
             pickle.dump(vq, f, 4)
@@ -43,4 +43,14 @@ def train_one_vq(root, X, win, p_win, n_clusters, n_file, Lagrange_multip):
 
 
 if __name__ == "__main__":
-    
+    from core.data import *
+    t = load('test', 144, size=[256])
+    X = t[0]
+    print(X.shape)
+    train_one_vq(root='/Users/alex/Desktop/test_data/', 
+                 X=X, 
+                 win=4, 
+                 p_win=8, 
+                 n_clusters=16, 
+                 n_file=2, 
+                 Lagrange_multip=1000)
