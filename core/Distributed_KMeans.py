@@ -28,6 +28,40 @@ import pickle
 from core.util.evaluate import MSE 
 import copy
 
+def write_UNCHAR(X, file, offset=128, truewrite=True):
+    X += offset
+    X[X<0] = 0
+    X[X>255] = 255
+    print('expected size %d bytes'%(X.shape[0]*X.shape[1]*X.shape[2]*X.shape[3]))
+    if truewrite == True:
+        Xt = copy.deepcopy(X)
+        Xt = Xt.astype(np.int8).transpose((0, 3, 1, 2)).reshape(-1)
+        with open(file+'.data', 'wb') as f:
+            f.write(Xt)
+    return X
+
+def write_SHORT(X, file, truewrite=True):
+    print('expected size %d bytes'%(X.shape[0]*X.shape[1]*X.shape[2]*X.shape[3]))
+    if truewrite == True:
+        Xt = copy.deepcopy(X)
+        Xt = Xt.astype(np.int16).transpose((0, 3, 1, 2)).reshape(-1)
+        with open(file+'.data', 'wb') as f:
+            f.write(Xt)
+       
+    return X
+
+def read(file, datatype="SHORT", size=256, frame_each_file=1000):
+    pix_num = size * size * 3
+    X = np.zeros(frame_each_file * pix_num)
+    dtype = np.int8
+    if datatype == 'SHORT':
+        dtype = np.int16
+    with open(file, 'rb') as f:
+        for k in range(frame_each_file):
+            X[k*pix_num:(k+1)*pix_num] = np.fromfile(f, dtype=dtype, count=pix_num, sep='')
+    X = X.reshape((frame_each_file, 3, size, size)).transpose((0,2,3,1))
+    return X.astype('float32')
+   
 class Distributed_KMeans:
     def __init__(self, n_clusters, size, win, datatype, frame_each_file, n_frames, max_iter=10000, max_err=1e-7):
         self.folder = ''
@@ -234,7 +268,7 @@ class Distributed_KMeans:
             idx = dmse > th
             iX[idx==False] *=0
             X, iX = X.reshape(S), iX.reshape(S)
-            X, iX = invShrink(X, self.win), invShrink(self.win)
+            X, iX = invShrink(X, self.win), invShrink(iX, self.win)
             if self.datatype == "SHORT":
                 self.write_SHORT(X-iX, 
                                     residual_folder+'/'+self.file_list[fileID],
