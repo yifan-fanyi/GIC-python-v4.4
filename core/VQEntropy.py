@@ -6,6 +6,7 @@ warnings.filterwarnings("ignore")
 from core.util.myKMeans import myKMeans
 from core.util import Shrink
 from core.util.Huffman import Huffman
+from core.util.mydKMeans import load_pkl, write_pkl
 # VQentropy v2023.03.26
 
 def entropy(x, nbin,v=True):
@@ -80,6 +81,20 @@ class VQEntropy:
             self.Huffman.fit(None, hist=hist)
             self.clear()
         return self
+
+    def fit_distributed(self, root, n_file):
+        # need to have *.label and *.dmse under root
+        for fileID in range(n_file):
+            label = load_pkl(root+'/'+str(fileID) +'.label')
+            dmse = load_pkl(root+'/'+str(fileID) +'.dmse')
+            for skip_TH in range(0, 5001, 10):
+                if skip_TH == 0 and fileID == 0:
+                    self.fit(label, dmse > skip_TH, group=3, keep_fit=False, done=False, plabel=None)
+                elif skip_TH == 5000 and fileID == n_file-1:
+                    self.fit(label, dmse > skip_TH, group=3, keep_fit=True, done=True, plabel=None)
+                else:
+                    self.fit(label, dmse > skip_TH, group=3, keep_fit=True, done=False, plabel=None)
+
 
     def encode(self, label, idx, fast=False):
         if fast == True:

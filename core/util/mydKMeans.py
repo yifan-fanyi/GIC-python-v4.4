@@ -53,11 +53,11 @@ class mydKMeans:
             c += 1
         X0 = s/c
         cand_cent, max_dst = None, -1
-        os.system('mkdir '+root+'/dst')
+        os.system('mkdir '+root+'cache_mydKMeans')
         for fileID in range(n_file):
             X = load_pkl(root+'/'+str(fileID)+'.data')
             dst = self.Cpredict(X, np.array(X0).reshape(1, -1), returnDist=True)
-            write_pkl(root+'/dst/'+str(fileID)+'.dst', dst)
+            write_pkl(root+'/'+'cache_mydKMeans/'+str(fileID)+'.dst', dst)
             pos = np.argmax(dst.reshape(-1))
             if dst[pos] > max_dst:
                 cand_cent = X[pos]
@@ -67,14 +67,14 @@ class mydKMeans:
             for fileID in range(n_file):
                 X = load_pkl(root+'/'+str(fileID)+'.data')
                 ndst = self.Cpredict(X, np.array(self.cluster_centers_[-1]).reshape(1, -1), returnDist=True)
-                dst = load_pkl(root+'/dst/'+str(fileID)+'.dst')
+                dst = load_pkl(root+'/'+'cache_mydKMeans/'+str(fileID)+'.dst')
                 dst = np.min(np.concatenate([dst.reshape(-1,1), ndst.reshape(-1,1)], axis=1), axis=1).reshape(-1, 1)
-                write_pkl(root+'/dst/'+str(fileID)+'.dst', dst)
+                write_pkl(root+'/'+'cache_mydKMeans/'+str(fileID)+'.dst', dst)
                 pos = np.argmax(dst.reshape(-1))
                 if dst[pos] > max_dst:
                     cand_cent = X[pos]
             self.cluster_centers_.append(cand_cent)
-        os.system('rm -rf '+root+'/dst')
+        os.system('rm -rf '+root+'/'+'cache_mydKMeans')
         self.cluster_centers_ = np.ascontiguousarray(np.array(self.cluster_centers_).astype('float32'))
     
     def update(self, X, label):
@@ -121,13 +121,13 @@ class mydKMeans:
             self.stop = self.early_stop_checker()
         return self
     def predict_distributed(self, root, n_file, dst_root):
-        for i in range(n_file):
-            X = load_pkl(root+'/'+str(i)+'.data')
+        for fileID in range(n_file):
+            X = load_pkl(root+'/'+str(fileID)+'.data')
             label = self.predict(X)
             iX = self.inverse_predict(label)
-            write_pkl(dst_root+'/'+str(i)+'.label', label)
+            write_pkl(dst_root+'/'+str(fileID)+'.label', label)
             # save residual
-            write_pkl(dst_root+'/'+str(i)+'.data', X-iX)
+            write_pkl(dst_root+'/'+str(fileID)+'.data', X-iX)
 
     def inverse_predict_distributed(self, root, n_file, dst_root):
         # pass
