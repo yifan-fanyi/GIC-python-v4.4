@@ -11,7 +11,7 @@ import copy
 import sklearn
 from sklearn import cluster
 from sklearn.mixture import GaussianMixture
-print('verbose=True')
+# print('verbose=True')
 
 def Cpredict(X, cent, returnDist=False):
     X = np.ascontiguousarray(X.astype('float32'))
