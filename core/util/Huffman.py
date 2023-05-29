@@ -4,6 +4,7 @@ __version__ = "2.5.0"
 from core.util import myLog
 import numpy as np
 import huffman
+from core.util import load_pkl, write_pkl
 
 class Huffman():
     def __init__(self):
@@ -11,10 +12,13 @@ class Huffman():
         self.dict = {}
         self.inv_dict = {}
         self.version = '2021.05.20'
+        self.hist = None
 
-    def Hist(self, x, bins=64):
+
+    def getHist(self, x, bins=64):
         x = x.reshape(-1).astype('int32')
-        res = np.zeros(bins)
+        if self.hist is None:
+            res = np.zeros(bins)
         for i in range(bins):
             res[i] = len(x[x == i])
         return res   
@@ -35,10 +39,18 @@ class Huffman():
             bins = max(len(np.unique(X)), np.max(X))
             if p2 == True and np.log2(bins) - np.trunc(np.log2(bins)) > 1e-5:
                 bins = pow(2, (int)(np.log2(bins))+1)
-            self.hist = self.Hist(X, bins=bins)
+            self.getHist(X, bins=bins)
         self.make_dict()
         return self
-        
+    
+    def fit_distributed(self, root, n_file, bins):
+        for fileID in range(n_file):
+            label = load_pkl(root+'/'+str(fileID)+'.label')
+            idx = load_pkl(root+'/'+str(fileID)+'.idx')   
+            self.getHist(label.reshape(-1)[idx.reshape(-1)], bins=bins)
+        self.make_dict()
+        return self
+    
     def encode(self, X):
         X = np.array(X)
         X = X.reshape(-1).astype('int32')

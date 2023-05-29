@@ -6,9 +6,18 @@ from textwrap import fill
 import numpy as np
 import time
 import inspect
+import _pickle as cPickle
 from time import gmtime, strftime, localtime
 from skimage.util import view_as_windows
 import pickle
+
+def load_pkl(file):
+    with open(file, 'rb') as f:
+        return cPickle.load(f).astype('float64')
+def write_pkl(file, data):
+    with open(file, 'wb') as f:
+        cPickle.dump(data, f)
+
 def file_exist(name):
     try:
         with open(name, 'rb') as f:

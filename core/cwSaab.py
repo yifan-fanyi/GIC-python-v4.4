@@ -1,6 +1,6 @@
 import numpy as np
 from core.util.myPCA import myPCA
-from core.util import Shrink, invShrink
+from core.util import Shrink, invShrink, load_pkl, write_pkl
 from core.util import Time
 
 class cwSaab:
@@ -98,6 +98,12 @@ class cwSaab:
             res.append(tX[:,:,:,self.idx[i] == False])#.astype('float16'))
         return res
 
+    def transform_distributed(self, root, n_file):
+        for fileID in range(n_file):
+            X = load_pkl(root+'/'+str(fileID)+'.spatial_data')
+            res = self.transform(X)
+            write_pkl(root+'/'+str(fileID)+'.cwsaab', res)
+            write_pkl(root+'/'+str(fileID)+'.iR', res[-1])
     def inverse_transform(self, rX):
         tX = rX[-1]
         for i in range(len(rX)-1, 0, -1):
@@ -125,3 +131,13 @@ class cwSaab:
             tX = self.PCA_list[0].inverse_transform(tX).reshape(S)
             tX = invShrink(tX, self.win[0])
         return tX
+    
+    def inverse_transform_one_distributed(self, root, n_file, level):
+        for fileID in range(n_file):
+            tX = load_pkl(root+'/'+str(fileID)+'.cwsaab')
+            iR = load_pkl(root+'/'+str(fileID)+'.iR')
+            if level > 0:
+                iR = self.cwSaab.inverse_transform_one(iR, tX[level-1], level)
+            else:
+                iR = self.cwSaab.inverse_transform_one(iR, None, level)
+            write_pkl(root+'/'+str(fileID)+'.iR', iR)

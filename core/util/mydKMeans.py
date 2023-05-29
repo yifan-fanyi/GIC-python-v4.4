@@ -1,18 +1,11 @@
 import numpy as np 
-import _pickle as cPickle
 import faiss
 import os
 from core.util.myKMeans import *
+from core.util import load_pkl, write_pkl
 # in *.data directly save the vectors
 # assume vectors all 2D
 VERBOSE = True
-
-def load_pkl(file):
-    with open(file, 'rb') as f:
-        return cPickle.load(f).astype('float64')
-def write_pkl(file, data):
-    with open(file, 'wb') as f:
-        cPickle.dump(data, f)
 
 class mydKMeans:
     def __init__(self, n_clusters, dim):
@@ -130,14 +123,14 @@ class mydKMeans:
             write_pkl(dst_root+'/'+str(fileID)+'.data', X-iX)
 
     def inverse_predict_distributed(self, root, n_file, dst_root):
-        # pass
+        pass
         # no need, currently
-
         
     def predict(self, X):
         return self.KM.predict(X)
     def inverse_predict(self, label):
         return self.KM.inverse_predict(label)
+    
 if __name__ == "__main__":
     from core.util.evaluate import MSE
     def entropy(x, nbin):

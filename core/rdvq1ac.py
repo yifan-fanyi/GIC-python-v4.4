@@ -1,13 +1,15 @@
 from core.cwSaab import cwSaab
 from core.util.myKMeans import myKMeans
+from core.util.mydKMeans import mydKMeans
+
 from core.util.Huffman import Huffman
 import numpy as np
-from core.util import Time, myLog, Shrink
+from core.util import Time, myLog, Shrink, load_pkl, write_pkl
 from core.util.ac import HierarchyCABAC, BAC
 from core.util.evaluate import MSE
 from core.util.ReSample import *
 from core.VQEntropy import VQEntropy
-
+import os
 isMAD = False
 print('<FRAMEWORK> rdVQ1 2022.12.09', isMAD)
 
@@ -34,6 +36,8 @@ class VQ:
         self.skip_th_step = {}
         self.Lagrange_multip = Lagrange_multip
         self.fast=True
+        self.isdistributed = [-1, None, -1]
+        self.max_dmse = {}
 
     def to_spatial(self,iR, tX, level, useTx=False):
         for i in range(level, -1, -1):
@@ -47,18 +51,12 @@ class VQ:
         return iR
 
     # find the optimal threshold
-    def RD_search_th(self, myhash, dmse, mse, omse, pidx, label, S, gidx, h0, ii, isfit):
-        min_cost, th = 1e40, -1
+    def RD_search_th(self, myhash, dmse, mse, omse, pidx, label, S, ii, isfit):
+        min_cost, th, lcost = 1e40, -1, 1e40
         is0 = False
-        lcost=1e40
         rx, dx = 0, 0
         if isfit == True:
-#             a = np.max(dmse)
-#             b = a / 200
-#             self.skip_th_range[myhash+'_'+str(0)+'_'+str(ii[0])] = (int)(a)
-#             self.skip_th_step[myhash+'_'+str(0)+'_'+str(ii[0])] = (int)(b)
             self.skip_th_range[myhash+'_'+str(ii[0])] = np.log2(np.max(dmse)) / 80
-    
         try:
             aa = self.skip_th_range[myhash+'_'+str(ii[0])]
             e, s = 80, 1
@@ -96,7 +94,6 @@ class VQ:
                     self.Huffman[myhash+'_'+str(i)+'_'+str(ii[i])+'_'+str(skip_TH)+'_h'] = Huffman().fit(label.reshape(-1)[idx.reshape(-1)].tolist() + np.arange(nc).tolist())
                     self.Huffman[myhash+'_'+str(i)+'_'+str(ii[i])+'_'+str(skip_TH)] = VQEntropy(nc, km.inverse_predict(np.arange(nc).reshape(-1, 1))).fit(label.reshape(S), idx.reshape(S))
 #                     continue
-            
                 h1 = self.Huffman.get(myhash+'_'+str(i)+'_'+str(ii[i])+'_'+str(skip_TH), None)
                 h2 = self.Huffman.get(myhash+'_'+str(i)+'_'+str(ii[i])+'_'+str(skip_TH)+'_h', None)
                 if h1 is not None:
@@ -121,7 +118,6 @@ class VQ:
             # using r is actually the bit incremental, but the previous would not change
             # which is a constant, so that we can ignore it
             cost = d + self.Lagrange_multip * r/ S[0] /1024**2 * pow(1.3, 8-int(myhash[1]))
-            print(skip_TH, r, d, cost)
             if min_cost > cost:
                 min_cost = cost
                 th = skip_TH
@@ -134,13 +130,12 @@ class VQ:
         return th, [min_cost, rx, dx], sidx
 
     # compute the rd cost for given iX
-    def RD(self, tX, X, iX, label, gidx, level, pos, pidx=None, ii=[], isfit=False):
+    def RD(self, tX, X, iX, label, level, pos, pidx=None, ii=[], isfit=False):
         myhash = 'L'+str(level)+'-P'+str(pos)
         S = [X.shape[0], X.shape[1], X.shape[2], -1]
         siX = np.zeros_like(X)
         siX += iX
         if self.fast == True: # actual encoding time, the global mse is better
-            #sX = X
             sX, siX = self.to_spatial(X, tX, level, True), self.to_spatial(siX, tX, level, False)
             acc_win = 1
             for i in range(0, level+1):
@@ -160,49 +155,45 @@ class VQ:
             mse = (np.mean(np.square((sX-siX).astype('float32')),axis=1))
             omse =  np.mean(np.square(sX.astype('float32')), axis=1)
         dmse = omse-mse
-        th, cost, idx = self.RD_search_th(myhash, dmse, mse, omse, pidx, label, S, gidx, self.Huffman[myhash+'_gidx'], ii, isfit)
+        if self.isdistributed[0] > -1:
+            write_pkl(self.isdistributed[1]+'/kmidx_'+str(self.isdistributed[2])+'/'+str(self.isdistributed[0])+'.dmse', dmse.reshape(S))
+            write_pkl(self.isdistributed[1]+'/kmidx_'+str(self.isdistributed[2])+'/'+str(self.isdistributed[0])+'.label', label.reshape(S))
+            self.max_dmse[self.isdistributed[2]] = max(np.max(dmse), self.max_dmse[self.isdistributed[2]])
+        th, cost, idx = self.RD_search_th(myhash, dmse, mse, omse, pidx, label, S, ii, isfit)
         return th, cost, idx
 
     # for each content select suitable codebook
     @Time
-    def RD_search_km(self, tX, X, gidx, level, pos, pidx, isfit):
+    def RD_search_km(self, tX, X, level, pos, pidx, isfit):
         myhash = 'L'+str(level)+'-P'+str(pos)
-        label = np.zeros_like(gidx).reshape(-1)
         S = [X.shape[0], X.shape[1], X.shape[2], -1]
         X = X.reshape(-1, X.shape[-1])
         TH, min_cost, skip_idx, tiX = 0, [1e20], None, None
         lcost = 1e40
-        for i0 in range(len(self.myKMeans[myhash+'_0'])):
-            km = [self.myKMeans[myhash+'_0'][i0]]
+        for i0 in range(len(self.myKMeans[myhash])):
+            km = self.myKMeans[myhash][i0]
             iX = np.zeros_like(X).reshape(-1, X.shape[-1])
-            for i in range(len(km)):
-                label[gidx.reshape(-1)==i] = km[i].predict(X[gidx.reshape(-1)==i,:self.n_dim_list[level][pos]]).reshape(-1)
-                iX[gidx.reshape(-1)==i,:self.n_dim_list[level][pos]] = km[i].inverse_predict(label[gidx.reshape(-1)==i].reshape(-1,1))
-            th, cost, idx = self.RD(tX, X.reshape(S), iX.reshape(S), label, gidx, level, pos, pidx, [i0], isfit)
-            print('----',cost, th)
+            label = km.predict(X[:,:self.n_dim_list[level][pos]]).reshape(-1)
+            iX[:,:self.n_dim_list[level][pos]] = km.inverse_predict(label.reshape(-1,1))
+            th, cost, idx = self.RD(tX, X.reshape(S), iX.reshape(S), label, level, pos, pidx, [i0], isfit)
             if cost[0] < min_cost[0]:
-                TH = th
-                min_cost = cost
-                skip_idx = idx
+                TH, min_cost, skip_idx = th, cost, idx
                 tiX = iX
             if lcost < cost[0]:
-                #pass
                 break
             else:
                 lcost = cost[0]
+        self.buffer['TH'] = TH
+        self.buffer['i0'] = i0
         myLog('<INFO> RD_cost=%8.4f r=%f d=%4.5f Skip_TH=%f'%(min_cost[0], min_cost[1], min_cost[2], TH))
         tiX = tiX.reshape(-1, tiX.shape[-1])
         tiX[skip_idx ==  False] *= 0 
         myLog('<BITSTREAM> bpp=%f'%min_cost[1])
         self.acc_bpp += min_cost[1] 
-#         self.buffer[myhash+'_idx'] = skip_idx
-#         self.buffer[myhash+'_label'] = label
-#         self.buffer[myhash+'_gidx'] = gidx
-#         self.buffer[myhash+'_th'] = TH
         return tiX.reshape(S)
         
     @Time
-    def fit_one_level_one_pos(self, X, tX, level, pos, gidx):
+    def fit_one_level_one_pos(self, X, tX, level, pos):
         myhash = 'L'+str(level)+'-P'+str(pos)
         self.n_dim_list[level][pos] = min(self.n_dim_list[level][pos], X.shape[-1])
         myLog('id=%s vq_dim=%d n_clusters=%d'%(myhash, self.n_dim_list[level][pos], self.n_clusters_list[level][pos]))
@@ -210,34 +201,67 @@ class VQ:
         iX = np.zeros_like(X).reshape(-1, X.shape[-1])
         X = X.reshape(-1, X.shape[-1])
         for i in range(1):
-            ii = gidx.reshape(-1) == i
             nc = self.n_clusters_list[level][pos]
             tmp, tmp_h = [], []
             while nc > 1:
-                km = myKMeans(nc).fit(X[ii,:self.n_dim_list[level][pos]])
-                # label = km.predict(X[ii,:self.n_dim_list[level][pos]])
-                # tmp_h.append(Huffman().fit(label))
+                km = myKMeans(nc).fit(X[:,:self.n_dim_list[level][pos]])
                 tmp.append(km)
                 nc = nc //2
             self.myKMeans[myhash+'_'+str(i)] = tmp
-            # self.Huffman[myhash+'_'+str(i)] = tmp_h
-        self.Huffman[myhash+'_gidx'] = Huffman().fit(gidx)
         X, iX = X.reshape(S), iX.reshape(S)
-        iX = self.RD_search_km(tX, X, gidx, level, pos, self.buffer.get('L'+str(level+1)+'-P'+str(0)+'_idx', None), True)
+        iX = self.RD_search_km(tX, X, level, pos, None, True)
         X[:, :,:,:self.n_dim_list[level][pos]] -= iX[:, :,:,:self.n_dim_list[level][pos]]
         return X
     
+
+    def fit_vq_entropy_distributed(self, root, n_file, myhash):
+        self.skip_th_range[myhash+'_'+str(self.isdistributed[2])] = np.log2(np.max(self.isdistributed[2])) / 80
+        km = self.myKMeans[myhash][self.isdistributed[2]]
+        nc = km.n_clusters
+        self.Huffman[myhash+'_'+str(self.isdistributed[2])+'_h'] = Huffman().fit(root++'/kmidx_'+str(self.isdistributed[2]), n_file, nc)
+        self.Huffman[myhash+'_'+str(self.isdistributed[2])] = VQEntropy(nc, km.inverse_predict(np.arange(nc).reshape(-1, 1))).fit_distributed(root++'/kmidx_'+str(self.isdistributed[2]), 
+                                                                                                                                              n_file, 
+                                                                                                                                              skrange=self.max_dmse[self.isdistributed[2]])
+#                     continue
+
+    def fit_one_level_one_pos_distributed(self, root, n_file, level, pos):
+        myhash = 'L'+str(level)+'-P'+str(pos)
+        # self.n_dim_list[level][pos] = min(self.n_dim_list[level][pos], X.shape[-1])
+        # myLog('id=%s vq_dim=%d n_clusters=%d'%(myhash, self.n_dim_list[level][pos], self.n_clusters_list[level][pos]))
+        for fileID in range(n_file):
+            X = load_pkl(root+'/'+str(fileID)+'.iR')
+            write_pkl(root+'/'+str(fileID)+'.data', X.reshape(-1, X.shape[-1]))
+        nc = self.n_clusters_list[level][pos]
+        dkm = mydKMeans(nc)
+        for n_iter in range(1e5):
+            dkm.fit(root, n_file)
+        self.myKMeans[myhash] = [dkm.KM]
+        os.system('rm -rf *.data')
+        for kmidx in range(len(self.myKMeans[myhash])):
+            os.system('mkdir '+root+'/kmidx_'+str(kmidx))
+            for fileID in range(n_file):
+                self.isdistributed = [fileID, root, kmidx]
+                X = load_pkl(root+'/'+str(fileID)+'.iR')
+                tX = load_pkl(root+'/'+str(fileID)+'.cwsaab')
+                iX = self.RD_search_km(tX, X, level, pos, None, True)
+                X[:, :,:,:self.n_dim_list[level][pos]] -= iX[:, :,:,:self.n_dim_list[level][pos]]
+                write_pkl(root+'/'+str(fileID)+'.iR', X)
+            self.fit_vq_entropy_distributed(root, n_file, myhash)
+
     @Time
     def fit_one_level(self, iR, tX, level):
         myhash = 'L'+str(level)
         self.shape[myhash] = [iR.shape[0], iR.shape[1], iR.shape[2], -1]
         myLog('id=%s'%myhash)
-        self.myKMeans[myhash] = myKMeans(1).fit(iR)
-        gidx = self.myKMeans[myhash].predict(iR)
         for pos in range(len(self.n_dim_list[level])):
-            
-            iR = self.fit_one_level_one_pos(iR, tX, level, pos, gidx)
+            iR = self.fit_one_level_one_pos(iR, tX, level, pos)
         return iR.reshape(self.shape[myhash])
+    
+    @Time
+    def fit_one_level_distributed(self, root, n_file, level):
+        for pos in range(len(self.n_dim_list[level])):
+            self.fit_one_level_one_pos_distributed(root, n_file, level, pos)
+
 
     @Time
     def fit(self, X):
@@ -253,6 +277,21 @@ class VQ:
                 iR = self.cwSaab.inverse_transform_one(iR, None, level)
         self.isfit=False
         return iR
+
+    def fit_distribued(self, root, n_file):
+        self.isfit=True
+        X = []
+        # cwsaab distributed fit not supported
+        for fileID in range(min(5, n_file)):
+            X.append(load_pkl(root+'/'+str(fileID)+'.spatial_data'))
+        X = np.concatenate(X, axis=0)
+        self.cwSaab.fit(X)
+        self.cwSaab.transform_distributed(root, n_file)
+        for level in range(len(self.n_dim_list)-1, -1, -1):
+            self.fit_one_level_distributed(root, n_file, level)
+            self.cwSaab.inverse_transform_one_distributed(root, n_file, level)
+        self.isfit=False
+    
 
     def predict_one_level_one_pos(self, tX, X, level, pos, gidx, skip):
         myhash = 'L'+str(level)+'-P'+str(pos)
