@@ -44,13 +44,18 @@ class VQEntropy:
             return -1
         return self.mappingFunc(label[k, i, j, 0])
 
-    def get_context(self, label, idx, k, i, j, plabel=None):  
-        a=''
-#         a += str(self.get_val(label, idx, k, i-1, j-1)) + '~' 
-        a+=        str(self.get_val(label, idx, k, i-1, j)) + '~' 
-#         a+=        str(self.get_val(label, idx, k, i-1, j+1)) + '~'
-        a+=        str(self.get_val(label, idx, k, i, j-1))
-        return a
+    def get_context(self, label, idx,k,i,j,plabel=None):
+        x1 = self.get_val(label, idx, k, i-1, j)
+        if x1 == -1:
+            x1 = self.get_val(label, idx, k, i-1, j+1)
+        if x1 == -1:
+            x1 = self.get_val(label, idx, k, i-1-1, j)
+        x2 = self.get_val(label, idx, k, i, j-1)
+        if x2 == -1:
+            x2 = self.get_val(label, idx, k, i-1, j-1)
+        if x2 == -1:
+            x2 = self.get_val(label, idx, k, i, j-1-1)
+        return str(x1) + '~' + str(x2)
     
     def fit(self, label, idx, group=3, keep_fit=False, done=False, plabel=None):
         if keep_fit == False:
@@ -86,10 +91,10 @@ class VQEntropy:
         for fileID in range(n_file):
             label = load_pkl(root+'/'+str(fileID) +'.label')
             dmse = load_pkl(root+'/'+str(fileID) +'.dmse')
-            for skip_TH in range(0, skrange, 10):
+            for skip_TH in range(0, (int)(skrange), 100):
                 if skip_TH == 0 and fileID == 0:
                     self.fit(label, dmse > skip_TH, group=3, keep_fit=False, done=False, plabel=None)
-                elif skip_TH > skrange-10-1 and fileID == n_file-1:
+                elif skip_TH > skrange-100-1 and fileID == n_file-1:
                     self.fit(label, dmse > skip_TH, group=3, keep_fit=True, done=True, plabel=None)
                     break
                 else:

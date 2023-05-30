@@ -18,10 +18,9 @@ class Huffman():
     def getHist(self, x, bins=64):
         x = x.reshape(-1).astype('int32')
         if self.hist is None:
-            res = np.zeros(bins)
+            self.hist = np.zeros(bins)
         for i in range(bins):
-            res[i] = len(x[x == i])
-        return res   
+            self.hist[i] = len(x[x == i])
 
     def make_dict(self):
         tmp = []

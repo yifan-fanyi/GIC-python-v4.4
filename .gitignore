@@ -1,2 +1,10 @@
 .DS_Store
 *.pyc
+*.idx
+*.data
+*.label
+*.cwsaab
+*.dst
+*.iR
+*.dmse
+*.spatial_data

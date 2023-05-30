@@ -13,7 +13,7 @@ import pickle
 
 def load_pkl(file):
     with open(file, 'rb') as f:
-        return cPickle.load(f).astype('float64')
+        return cPickle.load(f)
 def write_pkl(file, data):
     with open(file, 'wb') as f:
         cPickle.dump(data, f)
