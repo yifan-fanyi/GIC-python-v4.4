@@ -56,7 +56,7 @@ class VQ:
     def __init__(self, n_clusters_list, win_list, n_dim_list, enable_skip={}, transform_split=0,Lagrange_multip=300000, acc_bpp=0):
         self.n_clusters_list = n_clusters_list
         self.win_list = win_list
-        self.n_dim_list = n_dim_list
+        self.n_dim_list = (np.array(n_dim_list)*transform_split).tolist()
         self.cwSaab = cwSaab(win=win_list, TH=-1, transform_split=transform_split)
         self.shape = {}
         self.myKMeans = {}
@@ -228,6 +228,8 @@ class VQ:
     @Time
     def fit_one_level_one_pos(self, X, tX, level, pos):
         myhash = 'L'+str(level)+'-P'+str(pos)
+        if self.n_dim_list[level][pos] == -1:
+            self.n_dim_list[level][pos] = X.shape[-1]
         self.n_dim_list[level][pos] = min(self.n_dim_list[level][pos], X.shape[-1])
         myLog('id=%s vq_dim=%d n_clusters=%d'%(myhash, self.n_dim_list[level][pos], self.n_clusters_list[level][pos]))
         S = X.shape
@@ -265,6 +267,8 @@ class VQ:
             X = load_pkl(root+'/'+str(fileID)+'.iR')
             write_pkl(root+'/'+str(fileID)+'.data', X.reshape(-1, X.shape[-1]))
             dim = X.shape[-1]
+        if self.n_dim_list[level][pos] == -1:
+            self.n_dim_list[level][pos] = dim
         self.n_dim_list[level][pos] = min(self.n_dim_list[level][pos], dim)
         nc = self.n_clusters_list[level][pos]
         dkm = mydKMeans(nc, self.n_dim_list[level][pos])
@@ -274,7 +278,6 @@ class VQ:
         for fileID in range(min(5,n_file)):
             X.append(load_pkl(root+'/'+str(fileID)+'.data'))
         self.myKMeans[myhash] = [dkm.KM] + split_km_subspace(dkm.KM, np.concatenate(X,axis=0))
-        os.system('rm -rf *.data')
         for kmidx in range(len(self.myKMeans[myhash])):
             os.system('mkdir '+root+'/kmidx_'+str(kmidx))
             for fileID in range(n_file):
@@ -329,7 +332,11 @@ class VQ:
             self.fit_one_level_distributed(root, n_file, level)
             self.cwSaab.inverse_transform_one_distributed(root, n_file, level)
         self.isfit=False
-    
+        os.system('rm -rf '+root+'/*.cwsaab')
+        os.system('rm -rf '+root+'/*.dmse')
+        os.system('rm -rf '+root+'/*.label')
+        os.system('rm -rf '+root+'/*.data')
+        os.system('rm -rf '+root+'/*.idx')
 
     def predict_one_level_one_pos(self, tX, X, level, pos, gidx, skip):
         myhash = 'L'+str(level)+'-P'+str(pos)

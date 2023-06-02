@@ -104,6 +104,7 @@ class cwSaab:
             res = self.transform(X)
             write_pkl(root+'/'+str(fileID)+'.cwsaab', res)
             write_pkl(root+'/'+str(fileID)+'.iR', res[-1])
+            
     def inverse_transform(self, rX):
         tX = rX[-1]
         for i in range(len(rX)-1, 0, -1):
