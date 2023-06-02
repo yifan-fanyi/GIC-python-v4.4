@@ -139,6 +139,8 @@ class cwSaab:
             iR = load_pkl(root+'/'+str(fileID)+'.iR')
             if level > 0:
                 iR = self.inverse_transform_one(iR, tX[level-1], level)
+                write_pkl(root+'/'+str(fileID)+'.iR', iR)
             else:
                 iR = self.inverse_transform_one(iR, None, level)
-            write_pkl(root+'/'+str(fileID)+'.iR', iR)
+                write_pkl(root+'/'+str(fileID)+'.iRspatial', iR)
+            
