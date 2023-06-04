@@ -53,23 +53,23 @@ class mydKMeans:
             write_pkl(root+'/'+'cache_mydKMeans/'+str(fileID)+'.dst', dst)
             pos = np.argmax(dst.reshape(-1))
             if dst[pos] > max_dst:
+                max_dst = dst[pos]
                 cand_cent = X[pos]
         self.cluster_centers_ = [cand_cent]
         for _ in range(self.n_clusters-1):
             cand_cent, max_dst = None, -1
             for fileID in range(n_file):
                 X = load_pkl(root+'/'+str(fileID)+'.data')
-                ndst = self.Cpredict(X, np.array(self.cluster_centers_[-1]).reshape(1, -1), returnDist=True)
-                dst = load_pkl(root+'/'+'cache_mydKMeans/'+str(fileID)+'.dst')
-                dst = np.min(np.concatenate([dst.reshape(-1,1), ndst.reshape(-1,1)], axis=1), axis=1).reshape(-1, 1)
-                write_pkl(root+'/'+'cache_mydKMeans/'+str(fileID)+'.dst', dst)
+                dst = self.Cpredict(X, np.array(self.cluster_centers_), returnDist=True)
                 pos = np.argmax(dst.reshape(-1))
+                # print(np.max(dst))
                 if dst[pos] > max_dst:
+                    max_dst = dst[pos]
                     cand_cent = X[pos]
             self.cluster_centers_.append(cand_cent)
         os.system('rm -rf '+root+'/'+'cache_mydKMeans')
         self.cluster_centers_ = np.ascontiguousarray(np.array(self.cluster_centers_).astype('float32'))
-    
+        # print(self.cluster_centers_)
     def update(self, X, label):
         for i in range(self.n_clusters):
             idx = label == i
@@ -113,6 +113,7 @@ class mydKMeans:
             self.assign(root, n_file)
             self.stop = self.early_stop_checker()
         return self
+    
     def predict_distributed(self, root, n_file, dst_root):
         for fileID in range(n_file):
             X = load_pkl(root+'/'+str(fileID)+'.data')

@@ -1,5 +1,5 @@
 {
-    "resolution_list": [8,16,256],
+    "resolution_list": [8,32,128,256],
     "8":{
         "id":8,
         "level_list": [8, 4, 2],
@@ -7,13 +7,13 @@
         "transform_split":0,
         "Lagrange_multip":30000,
 
-        "n_cluster_list-8":[4,4,8,2048],
+        "n_cluster_list-8":[4,4,8,1024],
         "n_dim_list-8":[1,2,3,-1],
 
-        "n_cluster_list-4":[8,2048],
+        "n_cluster_list-4":[8,1024],
         "n_dim_list-4":[3,-1],
 
-        "n_cluster_list-2":[2048],
+        "n_cluster_list-2":[1024],
         "n_dim_list-2":[-1]
     },
     "16":{"id":16,
@@ -22,16 +22,16 @@
         "transform_split":0,
         "Lagrange_multip":30000,
 
-        "n_cluster_list-16":[4, 8,2048],
+        "n_cluster_list-16":[4, 8,1024],
         "n_dim_list-16":[2,3,-1],
 
-        "n_cluster_list-8":[4, 2048],
+        "n_cluster_list-8":[4, 1024],
         "n_dim_list-8":[3,-1],
 
-        "n_cluster_list-4":[4,2048],
+        "n_cluster_list-4":[4,1024],
         "n_dim_list-4":[3,-1],
 
-        "n_cluster_list-2":[2048],
+        "n_cluster_list-2":[1024],
         "n_dim_list-2":[-1]
     },
     "32":{"id":32,
@@ -40,19 +40,19 @@
         "transform_split":0,
         "Lagrange_multip":30000,
 
-        "n_cluster_list-32":[4, 8,2048],
+        "n_cluster_list-32":[4, 8,1024],
         "n_dim_list-32":[2,3,-1],
 
-        "n_cluster_list-16":[4,2048],
+        "n_cluster_list-16":[4,1024],
         "n_dim_list-16":[3,-1],
 
-        "n_cluster_list-8":[4, 2048],
+        "n_cluster_list-8":[4, 1024],
         "n_dim_list-8":[3,-1],
 
-        "n_cluster_list-4":[4,2048],
+        "n_cluster_list-4":[4,1024],
         "n_dim_list-4":[3,-1],
 
-        "n_cluster_list-2":[2048],
+        "n_cluster_list-2":[1024],
         "n_dim_list-2":[-1]
     },
     "64":{"id":64,
@@ -61,22 +61,22 @@
         "transform_split":0,
         "Lagrange_multip":30000,
 
-        "n_cluster_list-64":[4, 8,2048],
+        "n_cluster_list-64":[4, 8,1024],
         "n_dim_list-64":[2,3,-1],
 
-        "n_cluster_list-32":[4, 2048],
+        "n_cluster_list-32":[4, 1024],
         "n_dim_list-32":[3,-1],
 
-        "n_cluster_list-16":[4,2048],
+        "n_cluster_list-16":[4,1024],
         "n_dim_list-16":[3,-1],
 
-        "n_cluster_list-8":[2048],
+        "n_cluster_list-8":[1024],
         "n_dim_list-8":[4],
 
-        "n_cluster_list-4":[2048],
+        "n_cluster_list-4":[1024],
         "n_dim_list-4":[-1],
 
-        "n_cluster_list-2":[2048],
+        "n_cluster_list-2":[1024],
         "n_dim_list-2":[-1]
     },
     "128":{"id":128,
@@ -85,25 +85,25 @@
         "transform_split":2,
         "Lagrange_multip":30000,
 
-        "n_cluster_list-128":[16, 2048],
+        "n_cluster_list-128":[16, 1024],
         "n_dim_list-128":[4, -1],
 
-        "n_cluster_list-64":[16, 2048],
+        "n_cluster_list-64":[16, 1024],
         "n_dim_list-64":[4, -1],
 
-        "n_cluster_list-32":[16, 2048],
+        "n_cluster_list-32":[16, 1024],
         "n_dim_list-32":[4, -1],
 
-        "n_cluster_list-16":[16, 2048],
+        "n_cluster_list-16":[16, 1024],
         "n_dim_list-16":[4, -1],
 
-        "n_cluster_list-8":[16, 2048],
+        "n_cluster_list-8":[16, 1024],
         "n_dim_list-8":[4, -1],
 
-        "n_cluster_list-4":[16, 2048],
+        "n_cluster_list-4":[16, 1024],
         "n_dim_list-4":[4, -1],
 
-        "n_cluster_list-2":[16, 2048],
+        "n_cluster_list-2":[16, 1024],
         "n_dim_list-2":[4, -1]
     },
     "256":{"id":256,

@@ -49,6 +49,6 @@ def run(gpar, run_root, data_root, n_file):
 if __name__ == "__main__":
     # X = load_pkl('./unit/data/'+'/'+str(256)+'/'+str(0)+'.spatial_raw')
     # print(np.sum(X))
-    f = open('./par/par_unit.json',)
+    f = open('./par/par.json',)
     par = json.load(f)
-    run(par, run_root='./unit/run/', data_root='./unit/data/', n_file=14)
+    run(par, run_root='/Users/alex/Desktop/unit/run/', data_root='/Users/alex/Desktop/unit/data/', n_file=14)

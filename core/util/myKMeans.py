@@ -29,7 +29,7 @@ def KKZ_init(X, n_clusters):
     dst = Cpredict(X, np.array(X0).reshape(1, -1), returnDist=True)
     cluster_centers = [X[np.argmax(dst.reshape(-1))]]
     for _ in range(n_clusters-1):
-        ndst = Cpredict(X, np.array(cluster_centers[-1]).reshape(1, -1), returnDist=True)
+        ndst = Cpredict(X, np.array(cluster_centers), returnDist=True)
         dst = np.min(np.concatenate([dst, ndst], axis=1), axis=1).reshape(-1, 1)
         cluster_centers.append(X[np.argmax(dst.reshape(-1))])
     return np.ascontiguousarray(np.array(cluster_centers).astype('float32'))
