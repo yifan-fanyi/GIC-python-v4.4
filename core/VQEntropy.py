@@ -73,6 +73,7 @@ class VQEntropy:
                         context = self.get_context(label, idx, k, i, j, plabel)
                         if context not in self.d.keys():
                             self.d[context] = np.ones(self.nc)
+                        # print(self.nc, context, label.shape, idx.shape, k, i, j)
                         self.d[context][label[k,i,j,0]] += 1
             if done == True:
                 for k in self.d.keys():

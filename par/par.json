@@ -1,5 +1,5 @@
 {
-    "resolution_list": [8,32,128,256],
+    "resolution_list": [256],
     "8":{
         "id":8,
         "level_list": [8, 4, 2],

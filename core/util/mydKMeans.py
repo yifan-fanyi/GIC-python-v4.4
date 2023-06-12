@@ -1,12 +1,14 @@
 import numpy as np 
 import faiss
 import os
+import math
 from core.util.myKMeans import *
 from core.util import load_pkl, write_pkl
 # in *.data directly save the vectors
 # assume vectors all 2D
-VERBOSE = True
 
+VERBOSE = True
+# from sys import getsizeof
 class mydKMeans:
     def __init__(self, n_clusters, dim):
         self.n_clusters = n_clusters
@@ -38,6 +40,22 @@ class mydKMeans:
     def inverse_Cpredict(self, label):
         return self.cluster_centers_[label]
 
+    def init_one_cent(self, centID, root, n_file):
+        cand_cent, max_dst = None, -1
+        for fileID in range(n_file):
+            X = load_pkl(root+'/'+str(fileID)+'.data')
+            ndst = self.Cpredict(X, np.array(self.cluster_centers_[-1]).reshape(1,-1), returnDist=True)
+            dst = load_pkl(root+'/'+'cache_mydKMeans/'+str(fileID)+'.dst')
+            dst = np.min(np.concatenate([dst.reshape(-1,1), ndst.reshape(-1,1)], axis=1), axis=1).reshape(-1)
+            write_pkl(root+'/'+'cache_mydKMeans/'+str(fileID)+'.dst', dst)
+            pos = np.argmax(dst)
+            # print(np.max(dst))
+            if dst[pos] > max_dst:
+                max_dst = dst[pos]
+                cand_cent = X[pos]
+        print('   init %d, max_dist=%f'%(centID+1, max_dst))
+        return cand_cent
+    
     def init_centroid_KKZ(self, root, n_file):
         s, c = np.zeros(self.dim), 0
         for fileID in range(n_file):
@@ -55,21 +73,20 @@ class mydKMeans:
             if dst[pos] > max_dst:
                 max_dst = dst[pos]
                 cand_cent = X[pos]
+        write_pkl(root+'/'+'cache_mydKMeans/current.cent', cand_cent)
         self.cluster_centers_ = [cand_cent]
-        for _ in range(self.n_clusters-1):
-            cand_cent, max_dst = None, -1
-            for fileID in range(n_file):
-                X = load_pkl(root+'/'+str(fileID)+'.data')
-                dst = self.Cpredict(X, np.array(self.cluster_centers_), returnDist=True)
-                pos = np.argmax(dst.reshape(-1))
-                # print(np.max(dst))
-                if dst[pos] > max_dst:
-                    max_dst = dst[pos]
-                    cand_cent = X[pos]
+        print('   init 0, max_dist=%f'%max_dst)
+        for i in range(self.n_clusters-1):
+            # cand_cent = self.init_one_cent(i, root, n_file)
+            # by separately call the kkz init helps to reduce the swap memory usage
+            os.system('python3 dKM_separable.py init current '+str(i)+' '+root+' '+str(n_file))
+            cand_cent = load_pkl(root+'/'+'cache_mydKMeans/current.cent')
             self.cluster_centers_.append(cand_cent)
         os.system('rm -rf '+root+'/'+'cache_mydKMeans')
         self.cluster_centers_ = np.ascontiguousarray(np.array(self.cluster_centers_).astype('float32'))
         # print(self.cluster_centers_)
+        print('KKZ Finished')
+
     def update(self, X, label):
         for i in range(self.n_clusters):
             idx = label == i
@@ -80,7 +97,10 @@ class mydKMeans:
             self.mse += np.sum(np.square(X[idx].astype('float64')-self.cluster_centers_[i].astype('float64'))) # for early stop, Sum of Absolute Difference
 
     def update_centroid(self):
+        print('min freq',np.min(self.freq_vect))
         self.cluster_centers_ = self.sum_vect / self.freq_vect.reshape(-1,1)
+        if np.max(self.cluster_centers_) == math.inf:
+            print('Overflow')
 
     def assign(self, root, n_file):
         for fileID in range(n_file):
@@ -103,7 +123,7 @@ class mydKMeans:
             if self.KM is None:
                 if VERBOSE == True:
                     print('<INFO> Stopped, more iteration would not help!')
-                    self.KM = myKMeans(-1).fit(None, self.cluster_centers_)
+                self.KM = myKMeans(-1).fit(None, self.cluster_centers_)
             return self
         self.clear()
         self.iter += 1

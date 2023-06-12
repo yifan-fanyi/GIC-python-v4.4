@@ -12,6 +12,7 @@ import sklearn
 from sklearn import cluster
 from sklearn.mixture import GaussianMixture
 # print('verbose=True')
+faiss.cvar.distance_compute_blas_threshold = 400000
 
 def Cpredict(X, cent, returnDist=False):
     X = np.ascontiguousarray(X.astype('float32'))
@@ -191,10 +192,9 @@ class myKMeans():
         X = np.ascontiguousarray(X.astype('float32'))
         cent = np.ascontiguousarray(self.cluster_centers_.astype('float32'))
         index = faiss.IndexFlatL2(cent.shape[1]) 
-        index.add(cent)             
+        index.add(cent)    
         d, I = index.search(X, 1)
         return I
-
 
     def predict(self, X):
         S = (list)(X.shape)

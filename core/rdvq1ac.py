@@ -1,7 +1,7 @@
 from core.cwSaab import cwSaab
 from core.util.myKMeans import myKMeans
 from core.util.mydKMeans import mydKMeans
-
+import math
 from core.util.Huffman import Huffman
 import numpy as np
 from core.util import Time, myLog, Shrink, load_pkl, write_pkl
@@ -24,6 +24,7 @@ def toSpatial(cwSaab, iR, level, S,tX):
 def split_km_subspace(KM, AC):
     def get_dmse(km, AC):    
         label = km.predict(AC)
+        print(np.unique(label))
         iAC = km.inverse_predict(label)
         sX, siX = AC.reshape(-1, AC.shape[-1]), iAC.reshape(-1, iAC.shape[-1])
         mse = (np.mean(np.square((sX-siX).astype('float32')),axis=1))
@@ -48,6 +49,7 @@ def split_km_subspace(KM, AC):
     cent = KM.inverse_predict(h.reshape(-1,1))
     km_list = []
     nc = 8
+    assert np.max(cent)!=math.inf, 'overflow'
     while nc < len(cent):
         km_list.append(myKMeans(-1).fit(X=None, cluster_centers=cent[:nc]))
         nc *=2
@@ -90,9 +92,10 @@ class VQ:
         is0 = False
         rx, dx = 0, 0
         if isfit == True:
-            self.skip_th_range[myhash] = np.log2(min(1e5, np.max(dmse))) / 80
-        
-        aa = self.skip_th_range[myhash]
+            self.skip_th_range[myhash+'_'+str(ii[0])] = np.log2(min(1e5, np.max(dmse))) / 80
+        aa = self.skip_th_range[myhash+'_'+str(str(ii[0]))]
+        if self.isdistributed[2] > -1:
+            aa = self.skip_th_range[myhash+'_'+str(self.isdistributed[2])]
         e, s = 80, 1
         print("SKIP TH RANGE", e, s, aa, np.power(2, aa*float(80)))
         
@@ -109,41 +112,56 @@ class VQ:
                     is0 = True
             if isfit == True or self.fast==True:
                 st0=''
-                l = 2*2.75*min(1-np.sum(idx)/len(idx),np.sum(idx)/len(idx))+0.00276
+                p = np.sum(idx)/len(idx.reshape(-1))
+                if p == 0:
+                    l = 0
+                elif p == 1:
+                    l = 0
+                else:
+                    l = -p*np.log2(p) - (1-p)*np.log2(1-p)
                 l = int(l*len(idx))
                 for _ in range(l+1):
                     st0+='0'
             else:
                 st0 = HierarchyCABAC().encode(None, idx.reshape(S), 1) 
             st1 = ''
-            for i in range(len(ii)):
+            for i in range(len(ii)): # current no gidx len(ii) ==1
+                assert i == 0
                 if isfit== True:
                     km = self.myKMeans[myhash][ii[i]]
                     nc = km.n_clusters
-                    self.Huffman[myhash+'_h'] = Huffman().fit(label.reshape(-1)[idx.reshape(-1)].tolist() + np.arange(nc).tolist())
-                    self.Huffman[myhash] = VQEntropy(nc, km.inverse_predict(np.arange(nc).reshape(-1, 1))).fit(label.reshape(S), idx.reshape(S))
+                    self.Huffman[myhash+'_'+str(ii[i])+'_h'] = Huffman().fit(label.reshape(-1)[idx.reshape(-1)].tolist() + np.arange(nc).tolist())
+                    self.Huffman[myhash+'_'+str(ii[i])] = VQEntropy(nc, km.inverse_predict(np.arange(nc).reshape(-1, 1))).fit(label.reshape(S), idx.reshape(S))
 #                     continue
-                if self.isdistributed[0] > -1:
-                    km = self.myKMeans[myhash][ii[i]]
-                    nc = km.n_clusters
-                    self.Huffman[myhash+'_h'] =Huffman().fit(label.reshape(-1)[idx.reshape(-1)].tolist() + np.arange(nc).tolist())
-                    self.Huffman[myhash] =None
                 h1 = self.Huffman.get(myhash, None)
                 h2 = self.Huffman.get(myhash+'_h', None)
+                if self.isdistributed[0] == 0: # trial load before actual VQEntropy fitted
+                    self.skip_th_range[myhash+'_'+str(self.isdistributed[2])] = np.log2(np.max(self.isdistributed[2])) / 80
+                    km = self.myKMeans[myhash][ii[i]]
+                    nc = km.n_clusters
+                    self.Huffman[myhash+'_'+str(self.isdistributed[2])+'_h'] = Huffman().fit(label.reshape(-1)[idx.reshape(-1)].tolist() + np.arange(nc).tolist())
+                    self.Huffman[myhash+'_'+str(self.isdistributed[2])] = None
+                h1 = self.Huffman.get(myhash+'_'+str(self.isdistributed[2]), None)
+                h2 = self.Huffman.get(myhash+'_'+str(self.isdistributed[2])+'_h', None)
                 if h1 is not None:
                     st1 = h1.encode(label.reshape(S), idx.reshape(S))
-                if h2 is not None and isfit == False:
+                if h2 is not None:
                     b = h2.encode(label.reshape(-1)[idx.reshape(-1)])
-                    if len(st1) > len(b):
+                    if len(st1) > 1:
+                        if len(st1) > len(b):
+                            st1 = b
+                    else:
                         st1 = b
-                else:
+                if h1 is None and h2 is None:
                     #print('skip')
+                    print('No entropy coder available')
                     # no exist, skip all the current index
                     # maybe we need to use fixed length coding?
                     idx = idx.astype('int16')
                     idx *= 0
                     st0 = ''
-            r = len(st0+st1) 
+            print(len(st0), len(st1), S[0],' st')
+            r = len(st0+st1) / S[0]
             # compute the distortion by zero out the skipped ones
             d = np.zeros_like(mse)
             d[idx.reshape(-1)] += mse[idx.reshape(-1)]
@@ -155,7 +173,7 @@ class VQ:
             if min_cost > cost:
                 min_cost = cost
                 th = skip_TH
-                rx, dx = len(st0+st1), d
+                rx, dx = r, d
                 sidx= idx
             if lcost <= cost:
                 break
@@ -190,16 +208,16 @@ class VQ:
             omse =  np.mean(np.square(sX.astype('float32')), axis=1)
         dmse = omse-mse
         if self.isdistributed[0] > -1:
-            write_pkl(self.isdistributed[1]+'/'+str(self.isdistributed[0])+'.dmse', dmse.reshape(S))
-            write_pkl(self.isdistributed[1]+'/'+str(self.isdistributed[0])+'.label', label.reshape(S))
-            self.max_dmse[self.isdistributed[2]] = max(max(10,np.max(dmse)), self.max_dmse.get(self.isdistributed[2], -1))
-            self.skip_th_range[myhash] = np.log2(min(1e5, max(10,self.max_dmse[self.isdistributed[2]]))) / 80
+            write_pkl(self.isdistributed[1]+'/kmidx_'+str(self.isdistributed[2])+'/'+str(self.isdistributed[0])+'.dmse', dmse.reshape(S))
+            write_pkl(self.isdistributed[1]+'/kmidx_'+str(self.isdistributed[2])+'/'+str(self.isdistributed[0])+'.label', label.reshape(S))
+            self.max_dmse[myhash+'_'+str(self.isdistributed[2])] = max(max(10,np.max(dmse)), self.max_dmse.get(myhash+'_'+str(self.isdistributed[2]), -1))
+            self.skip_th_range[myhash+'_'+str(self.isdistributed[2])] = np.log2(min(1e5, max(10,self.max_dmse[myhash+'_'+str(self.isdistributed[2])]))) / 80
         th, cost, idx = self.RD_search_th(myhash, dmse, mse, omse, pidx, label, S, ii, isfit)
         return th, cost, idx
 
     # for each content select suitable codebook
     @Time
-    def RD_search_km(self, tX, X, level, pos, pidx, isfit):
+    def RD_search_km(self, tX, X, level, pos, pidx, isfit): # isfit is only used for fit and predict, distributed fit use isdistributed[0] (kmidx) to indicate
         myhash = 'L'+str(level)+'-P'+str(pos)
         S = [X.shape[0], X.shape[1], X.shape[2], -1]
         X = X.reshape(-1, X.shape[-1])
@@ -216,14 +234,15 @@ class VQ:
                 TH, min_cost, skip_idx = th, cost, idx
                 tiX = iX
             if lcost < cost[0]:
-                break
+                if self.isdistributed[0] < 0: # disable break during fitting
+                    break
             else:
                 lcost = cost[0]
-            
+            if self.isdistributed[0] > -1:
+                write_pkl(self.isdistributed[1]+'/kmidx_'+str(self.isdistributed[2])+'/'+str(self.isdistributed[0])+'.idx', skip_idx.reshape(S))
         self.buffer['TH'] = TH
         self.buffer['i0'] = i0
-        if self.isdistributed[0] > -1:
-            write_pkl(self.isdistributed[1]+'/'+str(self.isdistributed[0])+'.idx', skip_idx.reshape(S))
+        
         myLog('<INFO> RD_cost=%8.4f r=%f d=%4.5f Skip_TH=%f'%(min_cost[0], min_cost[1], min_cost[2], TH))
         tiX = tiX.reshape(-1, tiX.shape[-1])
         tiX[skip_idx ==  False] *= 0 
@@ -256,17 +275,23 @@ class VQ:
     
 
     def fit_vq_entropy_distributed(self, root, n_file, myhash):
-        self.skip_th_range[myhash] = np.log2(np.max(self.isdistributed[2])) / 80
-        km = self.myKMeans[myhash][self.isdistributed[2]]
-        nc = km.n_clusters
-        self.Huffman[myhash+'_h'] = Huffman().fit_distributed(root, n_file, nc)
-        self.Huffman[myhash] = VQEntropy(nc, km.inverse_predict(np.arange(nc).reshape(-1, 1))).fit_distributed(root, 
+        for i in range(len(self.myKMeans[myhash])):
+            self.isdistributed[2] = i
+            self.skip_th_range[myhash+'_'+str(self.isdistributed[2])] = np.log2(np.max(self.isdistributed[2])) / 80
+            km = self.myKMeans[myhash][self.isdistributed[2]]
+            nc = km.n_clusters
+            self.Huffman[myhash+'_'+str(self.isdistributed[2])+'_h'] = Huffman().fit_distributed(root+'/kmidx_'+str(i)+'/', n_file, nc)
+            # print(self.max_dmse)
+            if np.max(km.inverse_predict(np.arange(nc).reshape(-1, 1))) == math.inf:
+                print('Overflow', km.inverse_predict(np.arange(nc).reshape(-1, 1)))
+            self.Huffman[myhash+'_'+str(self.isdistributed[2])] = VQEntropy(nc, km.inverse_predict(np.arange(nc).reshape(-1, 1))).fit_distributed(root+'/kmidx_'+str(i)+'/', 
                                                                                                                                               n_file, 
-                                                                                                                                              skrange=self.max_dmse[self.isdistributed[2]])
+                                                                                                                                              skrange=self.max_dmse[myhash+'_'+str(self.isdistributed[2])])
 #                     continue
 
     def fit_one_level_one_pos_distributed(self, root, n_file, level, pos):
         myhash = 'L'+str(level)+'-P'+str(pos)
+        print(myhash)
         # myLog('id=%s vq_dim=%d n_clusters=%d'%(myhash, self.n_dim_list[level][pos], self.n_clusters_list[level][pos]))
         dim = -1
         X = load_pkl(root+'/'+str(0)+'.iR')
@@ -279,7 +304,9 @@ class VQ:
             write_pkl(root+'/'+str(fileID)+'.data', X.reshape(-1, X.shape[-1])[:, :self.n_dim_list[level][pos]])        
         nc = self.n_clusters_list[level][pos]
         dkm = mydKMeans(nc, self.n_dim_list[level][pos])
-        for _ in range(100000):
+        for i in range(1000000):
+            if i == 1000000-1:
+                dkm.stop = True
             dkm.fit(root, n_file)
         X = []
         for fileID in range(min(5,n_file)):
@@ -287,6 +314,8 @@ class VQ:
         self.myKMeans[myhash] = [dkm.KM] + split_km_subspace(dkm.KM, np.concatenate(X,axis=0))
         # for kmidx in range(len(self.myKMeans[myhash])):
         #     os.system('mkdir '+root+'/kmidx_'+str(kmidx))
+        for i in range(len(self.myKMeans[myhash])):
+            os.system('mkdir '+root+'/kmidx_'+str(i))
         for fileID in range(n_file):
             self.isdistributed = [fileID, root, -1]
             X = load_pkl(root+'/'+str(fileID)+'.iR')
@@ -313,7 +342,6 @@ class VQ:
 
     @Time
     def fit(self, X):
-        self.isfit=True
         self.cwSaab.fit(X)
         tX = self.cwSaab.transform(X)
         iR = tX[-1]
@@ -323,11 +351,9 @@ class VQ:
                 iR = self.cwSaab.inverse_transform_one(iR, tX[level-1], level)
             else:
                 iR = self.cwSaab.inverse_transform_one(iR, None, level)
-        self.isfit=False
         return iR
 
     def fit_distributed(self, root, n_file):
-        self.isfit=False
         X = []
         # cwsaab distributed fit not supported
         for fileID in range(min(5, n_file)):
@@ -338,7 +364,6 @@ class VQ:
         for level in range(len(self.n_dim_list)-1, -1, -1):
             self.fit_one_level_distributed(root, n_file, level)
             self.cwSaab.inverse_transform_one_distributed(root, n_file, level)
-        self.isfit=False
         os.system('rm -rf '+root+'/*.cwsaab')
         os.system('rm -rf '+root+'/*.dmse')
         os.system('rm -rf '+root+'/*.label')
