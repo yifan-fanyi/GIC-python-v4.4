@@ -2,11 +2,20 @@ import numpy as np
 import faiss
 import os
 import math
+from multiprocessing import Process
 from core.util.myKMeans import *
 from core.util import load_pkl, write_pkl
 # in *.data directly save the vectors
 # assume vectors all 2D
 
+def Cpredict(X, cent=None, returnDist=False):
+    X = np.ascontiguousarray(X.astype('float32'))
+    index = faiss.IndexFlatL2(cent.shape[1]) 
+    index.add(cent)             
+    d, I = index.search(X, 1)
+    if returnDist == True:
+        return d.reshape(-1)
+    return I.reshape(-1)
 VERBOSE = True
 # from sys import getsizeof
 class mydKMeans:
@@ -56,7 +65,7 @@ class mydKMeans:
         print('   init %d, max_dist=%f'%(centID+1, max_dst))
         return cand_cent
     
-    def init_centroid_KKZ(self, root, n_file):
+    def init_centroid_KKZ(self, root, n_file, n_jobs):
         s, c = np.zeros(self.dim), 0
         for fileID in range(n_file):
             X = load_pkl(root+'/'+str(fileID)+'.data')
@@ -79,7 +88,7 @@ class mydKMeans:
         for i in range(self.n_clusters-1):
             # cand_cent = self.init_one_cent(i, root, n_file)
             # by separately call the kkz init helps to reduce the swap memory usage
-            os.system('python3 dKM_separable.py init current '+str(i)+' '+root+' '+str(n_file))
+            os.system('python3 dKM_separable.py init current '+str(i)+' '+root+' '+str(n_file)+' '+str(n_jobs))
             cand_cent = load_pkl(root+'/'+'cache_mydKMeans/current.cent')
             self.cluster_centers_.append(cand_cent)
         os.system('rm -rf '+root+'/'+'cache_mydKMeans')
@@ -97,7 +106,7 @@ class mydKMeans:
             self.mse += np.sum(np.square(X[idx].astype('float64')-self.cluster_centers_[i].astype('float64'))) # for early stop, Sum of Absolute Difference
 
     def update_centroid(self):
-        print('min freq',np.min(self.freq_vect))
+        # print('min freq',np.min(self.freq_vect))
         self.cluster_centers_ = self.sum_vect / self.freq_vect.reshape(-1,1)
         if np.max(self.cluster_centers_) == math.inf:
             print('Overflow')
@@ -107,18 +116,19 @@ class mydKMeans:
             X = load_pkl(root+'/'+str(fileID)+'.data')
             label = self.Cpredict(X)
             self.update(X, label)
-        self.update_centroid()
-    
+        
     def early_stop_checker(self):
         if VERBOSE == True:
             print('iter=%d, sum_square_error=%f'%(self.iter, self.mse))
-        if np.abs(self.mse-self.last_mse) < 1e-3:
+        if self.last_mse > 0:
+            assert self.mse < self.last_mse, 'converge error'
+        if np.abs(self.mse-self.last_mse) < 1:
             return True
         self.last_mse = self.mse
         self.mse = float(0.)
         return False
 
-    def fit(self, root, n_file):
+    def fit(self, root, n_file, n_jobs=12):
         if self.stop == True:
             if self.KM is None:
                 if VERBOSE == True:
@@ -128,9 +138,21 @@ class mydKMeans:
         self.clear()
         self.iter += 1
         if self.iter == 0:
-            self.init_centroid_KKZ(root, n_file)
+            self.init_centroid_KKZ(root, n_file, n_jobs=n_jobs)
         else:
-            self.assign(root, n_file)
+            if n_jobs == 1:
+                self.assign(root, n_file)
+            else:
+                write_pkl(root+'/state_tempelte.state', {'sum_vect':self.sum_vect, 
+                                                         'freq_vect':self.freq_vect,
+                                                         'mse':self.mse,
+                                                         'n_clusters':self.n_clusters})
+                multiprocess_dkm(n_jobs, root, n_file, self.cluster_centers_)
+                dt = load_pkl(root+'/state_sum.state')
+                self.sum_vect += dt['sum_vect']
+                self.freq_vect += dt['freq_vect']
+                self.mse += dt['mse']
+            self.update_centroid()
             self.stop = self.early_stop_checker()
         return self
     
@@ -152,6 +174,48 @@ class mydKMeans:
     def inverse_predict(self, label):
         return self.KM.inverse_predict(label)
     
+
+def one_process_dkm(root, n_file, start_fileID, cent, processID):
+    d = load_pkl(root+'/state_tempelte.state')
+    for fileID in range(start_fileID, start_fileID+n_file):
+        X = load_pkl(root+'/'+str(fileID)+'.data')
+        label = Cpredict(X, cent)
+        for i in range(d['n_clusters']):
+            idx = label == i
+            if np.sum(idx) < 1:
+                continue
+            d['sum_vect'][i] += np.sum(X[idx].astype('float64'), axis=0)
+            d['freq_vect'][i] += (float)(np.sum(idx))
+            d['mse'] += np.sum(np.square(X[idx].astype('float64')-cent[i].astype('float64'))) # for early stop, Sum of Absolute Difference
+    write_pkl(root+'/state_'+str(processID)+'.state', d)
+
+
+def multiprocess_dkm(n_jobs, root, n_file, cent):
+    n_jobs = np.min([n_jobs, n_file, os.cpu_count()])
+    n_files_per_task = n_file // n_jobs +1
+    print('n_jobs',n_jobs, n_files_per_task)
+    assert n_files_per_task*n_jobs >= n_file, 'not all files are processed'
+    p_pool = []
+    for start_fileID in range(n_jobs):
+        p = Process(target=one_process_dkm, args=(root, min(n_files_per_task, n_file-start_fileID*n_files_per_task), start_fileID*n_files_per_task, cent, start_fileID, ))
+        p_pool.append(p)
+    for i in range(n_jobs):
+        p_pool[i].start()
+        p_pool[i].join()
+    # aggregate
+    d = load_pkl(root+'/state_tempelte.state')
+    for processID in range(n_jobs):
+        dt = load_pkl(root+'/state_'+str(processID)+'.state')
+        os.system('rm -rf '+root+'/state_'+str(processID)+'.state')
+        d['sum_vect'] += dt['sum_vect']
+        d['freq_vect'] += dt['freq_vect']
+        d['mse'] += dt['mse']
+    write_pkl(root+'/state_sum.state', d)
+
+
+
+
+
 if __name__ == "__main__":
     from core.util.evaluate import MSE
     def entropy(x, nbin):

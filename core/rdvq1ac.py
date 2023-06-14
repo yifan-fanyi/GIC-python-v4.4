@@ -9,6 +9,8 @@ from core.util.ac import HierarchyCABAC, BAC
 from core.util.evaluate import MSE
 from core.util.ReSample import *
 from core.VQEntropy import VQEntropy
+from multiprocessing import Process
+
 import os
 isMAD = False
 print('<FRAMEWORK> rdVQ1 2022.12.09', isMAD)
@@ -20,7 +22,7 @@ def toSpatial(cwSaab, iR, level, S,tX):
         else:
             iR = cwSaab.inverse_transform_one(iR, None, i)
     return iR
-
+# the km should sorted by n_codewords
 def split_km_subspace(KM, AC):
     def get_dmse(km, AC):    
         label = km.predict(AC)
@@ -275,19 +277,30 @@ class VQ:
     
 
     def fit_vq_entropy_distributed(self, root, n_file, myhash):
-        for i in range(len(self.myKMeans[myhash])):
-            self.isdistributed[2] = i
-            self.skip_th_range[myhash+'_'+str(self.isdistributed[2])] = np.log2(np.max(self.isdistributed[2])) / 80
-            km = self.myKMeans[myhash][self.isdistributed[2]]
-            nc = km.n_clusters
-            self.Huffman[myhash+'_'+str(self.isdistributed[2])+'_h'] = Huffman().fit_distributed(root+'/kmidx_'+str(i)+'/', n_file, nc)
-            # print(self.max_dmse)
-            if np.max(km.inverse_predict(np.arange(nc).reshape(-1, 1))) == math.inf:
-                print('Overflow', km.inverse_predict(np.arange(nc).reshape(-1, 1)))
-            self.Huffman[myhash+'_'+str(self.isdistributed[2])] = VQEntropy(nc, km.inverse_predict(np.arange(nc).reshape(-1, 1))).fit_distributed(root+'/kmidx_'+str(i)+'/', 
+        if self.n_jobs == 1:
+            for i in range(len(self.myKMeans[myhash])):
+                self.isdistributed[2] = i
+                self.skip_th_range[myhash+'_'+str(self.isdistributed[2])] = np.log2(np.max(self.isdistributed[2])) / 80
+                km = self.myKMeans[myhash][self.isdistributed[2]]
+                nc = km.n_clusters
+                self.Huffman[myhash+'_'+str(self.isdistributed[2])+'_h'] = Huffman().fit_distributed(root+'/kmidx_'+str(i)+'/', n_file, nc)
+                # print(self.max_dmse)
+                if np.max(km.inverse_predict(np.arange(nc).reshape(-1, 1))) == math.inf:
+                    print('Overflow', km.inverse_predict(np.arange(nc).reshape(-1, 1)))
+                self.Huffman[myhash+'_'+str(self.isdistributed[2])] = VQEntropy(nc, km.inverse_predict(np.arange(nc).reshape(-1, 1))).fit_distributed(root+'/kmidx_'+str(i)+'/', 
                                                                                                                                               n_file, 
-                                                                                                                                              skrange=self.max_dmse[myhash+'_'+str(self.isdistributed[2])])
+                                                                                                                      skrange=self.max_dmse[myhash+'_'+str(self.isdistributed[2])])
 #                     continue
+        else:
+            # write_pkl(root+'/current.vq', self)
+            process_vqqentropy(root, n_file, myhash)
+
+            for i in range(len(self.myKMeans[myhash])):
+                dt = load_pkl(root+'/'+myhash+'_'+str(i)+'.ec')
+                for k in dt.keys():
+                    self.Huffman[k] = dt[k]
+                os.system('rm -rf '+root+'/'+myhash+'_'+str(i)+'.ec')
+
 
     def fit_one_level_one_pos_distributed(self, root, n_file, level, pos):
         myhash = 'L'+str(level)+'-P'+str(pos)
@@ -316,13 +329,17 @@ class VQ:
         #     os.system('mkdir '+root+'/kmidx_'+str(kmidx))
         for i in range(len(self.myKMeans[myhash])):
             os.system('mkdir '+root+'/kmidx_'+str(i))
-        for fileID in range(n_file):
-            self.isdistributed = [fileID, root, -1]
-            X = load_pkl(root+'/'+str(fileID)+'.iR')
-            tX = load_pkl(root+'/'+str(fileID)+'.cwsaab')
-            iX = self.RD_search_km(tX, X, level, pos, None, False)
-            X[:,:,:,:self.n_dim_list[level][pos]] -= iX[:, :,:,:self.n_dim_list[level][pos]]
-            write_pkl(root+'/'+str(fileID)+'.iR', X)
+        if self.n_jobs == 1:
+            for fileID in range(n_file):
+                self.isdistributed = [fileID, root, -1]
+                X = load_pkl(root+'/'+str(fileID)+'.iR')
+                tX = load_pkl(root+'/'+str(fileID)+'.cwsaab')
+                iX = self.RD_search_km(tX, X, level, pos, None, False)
+                X[:,:,:,:self.n_dim_list[level][pos]] -= iX[:, :,:,:self.n_dim_list[level][pos]]
+                write_pkl(root+'/'+str(fileID)+'.iR', X)
+        else:
+            write_pkl(root+'/current.vq', self)
+            process_rd(root, n_file, level, pos, self.n_jobs)
         self.fit_vq_entropy_distributed(root, n_file, myhash)
 
     @Time
@@ -341,7 +358,8 @@ class VQ:
 
 
     @Time
-    def fit(self, X):
+    def fit(self, X, n_jobs=12):
+        self.n_jobs = n_jobs
         self.cwSaab.fit(X)
         tX = self.cwSaab.transform(X)
         iR = tX[-1]
@@ -416,4 +434,67 @@ class VQ:
                 iR = self.cwSaab.inverse_transform_one(iR, None, level)            
         return iR
 
-    
+def one_process_rd(root, n_file, start_fileID, level, pos):
+    vq = load_pkl(root+'/current.vq')
+    for fileID in range(start_fileID, start_fileID+n_file):
+        vq.isdistributed = [fileID, root, -1]
+        X = load_pkl(root+'/'+str(fileID)+'.iR')
+        tX = load_pkl(root+'/'+str(fileID)+'.cwsaab')
+        iX = vq.RD_search_km(tX, X, level, pos, None, False)
+        X[:,:,:,:vq.n_dim_list[level][pos]] -= iX[:, :,:,:vq.n_dim_list[level][pos]]
+        write_pkl(root+'/'+str(fileID)+'.iR', X)
+    # return cand_cent
+
+def process_rd(root, n_file, level, pos, n_jobs):
+    n_jobs = np.min([n_jobs, n_file, os.cpu_count()])
+    # print('n_jobs',n_jobs)
+    n_files_per_task = n_file // n_jobs +1
+    p_pool = []
+    for start_fileID in range(n_jobs):
+        p = Process(target=one_process_rd, args=(root, min(n_files_per_task, n_file-start_fileID*n_files_per_task), start_fileID*n_files_per_task, level, pos, ))
+        p_pool.append(p)
+    for i in range(n_jobs):
+        p_pool[i].start()
+        p_pool[i].join()
+
+def one_process_vqentropy(root, n_file, myhash, kmidx):
+    vq = load_pkl(root+'/current.vq')
+    d = {}
+    for i in kmidx:
+        vq.isdistributed[2] = i
+        vq.skip_th_range[myhash+'_'+str(vq.isdistributed[2])] = np.log2(np.max(vq.isdistributed[2])) / 80
+        km = vq.myKMeans[myhash][vq.isdistributed[2]]
+        nc = km.n_clusters
+        d[myhash+'_'+str(vq.isdistributed[2])+'_h'] = Huffman().fit_distributed(root+'/kmidx_'+str(i)+'/', n_file, nc)
+        # print(self.max_dmse)
+        if np.max(km.inverse_predict(np.arange(nc).reshape(-1, 1))) == math.inf:
+            print('Overflow', km.inverse_predict(np.arange(nc).reshape(-1, 1)))
+        d[myhash+'_'+str(vq.isdistributed[2])] = VQEntropy(nc, km.inverse_predict(np.arange(nc).reshape(-1, 1))).fit_distributed(root+'/kmidx_'+str(i)+'/', 
+                                                                                                                                              n_file, 
+        write_pkl(root+'/'+myhash+'_'+str(i)+'.ec', d)                                                                                                                  skrange=self.max_dmse[myhash+'_'+str(self.isdistributed[2])])
+#                     continue
+
+# schedule the job based on n_clusters
+# linear relationship, if n_jobs=2, and the candidates kmeans with codewords 1024, 512, 256, 256
+# one job will be used to train 1024's ec
+# other three's ec will be trained by second job
+def process_vqqentropy(root, n_file, myhash):
+    vq = load_pkl(root+'/current.vq')
+    km_list = len(vq.myKMeans[myhash])
+    n_km = len(km_list)
+    n_jobs = np.min([n_jobs, n_km, os.cpu_count()])
+    kmidx, ct = [], np.zeros(n_jobs)
+    for i in range(n_jobs):
+        kmidx.append([])
+    for i in range(n_km):
+        nc = km_list[i].n_clusters
+        pos = np.argmin(ct)
+        kmidx[pos].append(i)
+        ct[pos] += nc
+    p_pool = []
+    for _ in range(n_jobs):
+        p = Process(target=one_process_vqentropy, args=(root, n_file, myhash, kmidx[i], ))
+        p_pool.append(p)
+    for i in range(n_jobs):
+        p_pool[i].start()
+        p_pool[i].join()

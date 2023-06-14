@@ -13,10 +13,11 @@ import pickle
 
 def load_pkl(file):
     with open(file, 'rb') as f:
-        s = file.split('.')[-1]
-        if s in ['cwsaab', 'label', 'idx']:
-            return cPickle.load(f)
-        return cPickle.load(f).astype('float32')
+        d = cPickle.load(f)
+        if type(d) is np.ndarray:
+            return d.astype('float32')
+        else:
+            return d
 def write_pkl(file, data):
     with open(file, 'wb') as f:
         cPickle.dump(data, f)
