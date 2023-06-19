@@ -94,7 +94,7 @@ class mydKMeans:
         os.system('rm -rf '+root+'/'+'cache_mydKMeans')
         self.cluster_centers_ = np.ascontiguousarray(np.array(self.cluster_centers_).astype('float32'))
         # print(self.cluster_centers_)
-        print('KKZ Finished')
+        # print('KKZ Finished')
 
     def update(self, X, label):
         for i in range(self.n_clusters):
@@ -120,15 +120,15 @@ class mydKMeans:
     def early_stop_checker(self):
         if VERBOSE == True:
             print('iter=%d, sum_square_error=%f'%(self.iter, self.mse))
-        if self.last_mse > 0:
-            assert self.mse < self.last_mse, 'converge error'
         if np.abs(self.mse-self.last_mse) < 1:
             return True
+        if self.last_mse > 0:
+            assert self.mse < self.last_mse, 'converge error'
         self.last_mse = self.mse
         self.mse = float(0.)
         return False
 
-    def fit(self, root, n_file, n_jobs=12):
+    def fit(self, root, n_file, n_jobs):
         if self.stop == True:
             if self.KM is None:
                 if VERBOSE == True:
@@ -193,7 +193,7 @@ def one_process_dkm(root, n_file, start_fileID, cent, processID):
 def multiprocess_dkm(n_jobs, root, n_file, cent):
     n_jobs = np.min([n_jobs, n_file, os.cpu_count()])
     n_files_per_task = n_file // n_jobs +1
-    print('n_jobs',n_jobs, n_files_per_task)
+    # print('n_jobs',n_jobs, 'n_files_per_task',n_files_per_task)
     assert n_files_per_task*n_jobs >= n_file, 'not all files are processed'
     p_pool = []
     for start_fileID in range(n_jobs):

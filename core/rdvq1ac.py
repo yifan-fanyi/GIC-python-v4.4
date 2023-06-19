@@ -13,7 +13,7 @@ from multiprocessing import Process
 
 import os
 isMAD = False
-print('<FRAMEWORK> rdVQ1 2022.12.09', isMAD)
+# print('<FRAMEWORK> rdVQ1 2022.12.09', isMAD)
 
 def toSpatial(cwSaab, iR, level, S,tX):
     for i in range(level, -1, -1):
@@ -26,7 +26,7 @@ def toSpatial(cwSaab, iR, level, S,tX):
 def split_km_subspace(KM, AC):
     def get_dmse(km, AC):    
         label = km.predict(AC)
-        print(np.unique(label))
+        # print(np.unique(label))
         iAC = km.inverse_predict(label)
         sX, siX = AC.reshape(-1, AC.shape[-1]), iAC.reshape(-1, iAC.shape[-1])
         mse = (np.mean(np.square((sX-siX).astype('float32')),axis=1))
@@ -99,7 +99,7 @@ class VQ:
         if self.isdistributed[2] > -1:
             aa = self.skip_th_range[myhash+'_'+str(self.isdistributed[2])]
         e, s = 80, 1
-        print("SKIP TH RANGE", e, s, aa, np.power(2, aa*float(80)))
+        # print("SKIP TH RANGE", e, s, aa, np.power(2, aa*float(80)))
         
         for k in range(0, (int)(e), (int)(s)):
             if s == 1:
@@ -135,16 +135,16 @@ class VQ:
                     self.Huffman[myhash+'_'+str(ii[i])+'_h'] = Huffman().fit(label.reshape(-1)[idx.reshape(-1)].tolist() + np.arange(nc).tolist())
                     self.Huffman[myhash+'_'+str(ii[i])] = VQEntropy(nc, km.inverse_predict(np.arange(nc).reshape(-1, 1))).fit(label.reshape(S), idx.reshape(S))
 #                     continue
-                h1 = self.Huffman.get(myhash, None)
-                h2 = self.Huffman.get(myhash+'_h', None)
-                if self.isdistributed[0] == 0: # trial load before actual VQEntropy fitted
-                    self.skip_th_range[myhash+'_'+str(self.isdistributed[2])] = np.log2(np.max(self.isdistributed[2])) / 80
+                h1 = self.Huffman.get(myhash+'_'+str(ii[i]), None)
+                h2 = self.Huffman.get(myhash+'_'+str(ii[i])+'_h', None)
+                if self.isdistributed[0] >-1: # trial load before actual VQEntropy fitted
                     km = self.myKMeans[myhash][ii[i]]
                     nc = km.n_clusters
                     self.Huffman[myhash+'_'+str(self.isdistributed[2])+'_h'] = Huffman().fit(label.reshape(-1)[idx.reshape(-1)].tolist() + np.arange(nc).tolist())
                     self.Huffman[myhash+'_'+str(self.isdistributed[2])] = None
-                h1 = self.Huffman.get(myhash+'_'+str(self.isdistributed[2]), None)
-                h2 = self.Huffman.get(myhash+'_'+str(self.isdistributed[2])+'_h', None)
+                    h1 = self.Huffman.get(myhash+'_'+str(self.isdistributed[2]), None)
+                    h2 = self.Huffman.get(myhash+'_'+str(self.isdistributed[2])+'_h', None)
+                    # print(h1, h2,'xxx')
                 if h1 is not None:
                     st1 = h1.encode(label.reshape(S), idx.reshape(S))
                 if h2 is not None:
@@ -162,7 +162,7 @@ class VQ:
                     idx = idx.astype('int16')
                     idx *= 0
                     st0 = ''
-            print(len(st0), len(st1), S[0],' st')
+            # print(len(st0), len(st1), S[0],' st')
             r = len(st0+st1) / S[0]
             # compute the distortion by zero out the skipped ones
             d = np.zeros_like(mse)
@@ -178,7 +178,8 @@ class VQ:
                 rx, dx = r, d
                 sidx= idx
             if lcost <= cost:
-                break
+                if self.isdistributed[0] < 0:
+                    break
             else:
                 lcost = cost
         return th, [min_cost, rx, dx], sidx
@@ -280,7 +281,6 @@ class VQ:
         if self.n_jobs == 1:
             for i in range(len(self.myKMeans[myhash])):
                 self.isdistributed[2] = i
-                self.skip_th_range[myhash+'_'+str(self.isdistributed[2])] = np.log2(np.max(self.isdistributed[2])) / 80
                 km = self.myKMeans[myhash][self.isdistributed[2]]
                 nc = km.n_clusters
                 self.Huffman[myhash+'_'+str(self.isdistributed[2])+'_h'] = Huffman().fit_distributed(root+'/kmidx_'+str(i)+'/', n_file, nc)
@@ -292,19 +292,19 @@ class VQ:
                                                                                                                       skrange=self.max_dmse[myhash+'_'+str(self.isdistributed[2])])
 #                     continue
         else:
-            # write_pkl(root+'/current.vq', self)
-            process_vqqentropy(root, n_file, myhash)
+            write_pkl(root+'/current.vq', self)
+            process_vqqentropy(root, n_file, myhash, self.n_jobs)
 
             for i in range(len(self.myKMeans[myhash])):
                 dt = load_pkl(root+'/'+myhash+'_'+str(i)+'.ec')
                 for k in dt.keys():
                     self.Huffman[k] = dt[k]
-                os.system('rm -rf '+root+'/'+myhash+'_'+str(i)+'.ec')
+                # os.system('rm -rf '+root+'/'+myhash+'_'+str(i)+'.ec')
 
 
     def fit_one_level_one_pos_distributed(self, root, n_file, level, pos):
         myhash = 'L'+str(level)+'-P'+str(pos)
-        print(myhash)
+        # print(myhash)
         # myLog('id=%s vq_dim=%d n_clusters=%d'%(myhash, self.n_dim_list[level][pos], self.n_clusters_list[level][pos]))
         dim = -1
         X = load_pkl(root+'/'+str(0)+'.iR')
@@ -320,7 +320,7 @@ class VQ:
         for i in range(1000000):
             if i == 1000000-1:
                 dkm.stop = True
-            dkm.fit(root, n_file)
+            dkm.fit(root, n_file, self.n_jobs)
         X = []
         for fileID in range(min(5,n_file)):
             X.append(load_pkl(root+'/'+str(fileID)+'.data'))
@@ -339,7 +339,10 @@ class VQ:
                 write_pkl(root+'/'+str(fileID)+'.iR', X)
         else:
             write_pkl(root+'/current.vq', self)
-            process_rd(root, n_file, level, pos, self.n_jobs)
+            vq = process_rd(root, n_file, level, pos, self.n_jobs)
+        self.max_dmse = vq.max_dmse
+        self.skip_th_range = vq.skip_th_range
+        self.Huffman = vq.Huffman
         self.fit_vq_entropy_distributed(root, n_file, myhash)
 
     @Time
@@ -358,8 +361,8 @@ class VQ:
 
 
     @Time
-    def fit(self, X, n_jobs=12):
-        self.n_jobs = n_jobs
+    def fit(self, X):
+        
         self.cwSaab.fit(X)
         tX = self.cwSaab.transform(X)
         iR = tX[-1]
@@ -371,10 +374,11 @@ class VQ:
                 iR = self.cwSaab.inverse_transform_one(iR, None, level)
         return iR
 
-    def fit_distributed(self, root, n_file):
+    def fit_distributed(self, root, n_file, n_jobs):
         X = []
+        self.n_jobs = n_jobs
         # cwsaab distributed fit not supported
-        for fileID in range(min(5, n_file)):
+        for fileID in range(min(25, n_file)):
             X.append(load_pkl(root+'/'+str(fileID)+'.spatial_data'))
         X = np.concatenate(X, axis=0).astype('float32')
         self.cwSaab.fit(X)
@@ -399,7 +403,8 @@ class VQ:
         S = X.shape
         X = X.reshape(-1, X.shape[-1])
         X = X.reshape(S)
-        iX = self.RD_search_km(tX, X, gidx, level, pos, self.buffer.get('L'+str(level+1)+'-P'+str(0)+'_idx', None), False)
+        iX = self.RD_search_km(tX, X, level, 
+                               pos, self.buffer.get('L'+str(level+1)+'-P'+str(0)+'_idx', None), False)
         X[:, :,:,:self.n_dim_list[level][pos]] -= iX[:, :,:,:self.n_dim_list[level][pos]]
         
         return X
@@ -408,14 +413,12 @@ class VQ:
     def predict_one_level(self, tX, iR, level, skip=[]):
         myhash = 'L'+str(level)
         self.shape[myhash] = [iR.shape[0], iR.shape[1], iR.shape[2], -1]
-        gidx = self.myKMeans[myhash].predict(iR)
+        # gidx = self.myKMeans[myhash].predict(iR)
         for pos in range(len(self.n_dim_list[level])):
-            iR = self.predict_one_level_one_pos(tX, iR, level, pos, gidx,skip)
+            iR = self.predict_one_level_one_pos(tX, iR, level, pos, None,skip)
         return iR.reshape(self.shape[myhash])
 
-    def predict(self, X, skip=[],fast=True):
-        print('here',self.Lagrange_multip)
-        
+    def predict(self, X, skip=[],fast=True):        
         if X.shape[0]>300:
             self.fast=True
         else:
@@ -434,7 +437,7 @@ class VQ:
                 iR = self.cwSaab.inverse_transform_one(iR, None, level)            
         return iR
 
-def one_process_rd(root, n_file, start_fileID, level, pos):
+def one_process_rd(root, n_file, start_fileID, level, pos, h):
     vq = load_pkl(root+'/current.vq')
     for fileID in range(start_fileID, start_fileID+n_file):
         vq.isdistributed = [fileID, root, -1]
@@ -443,6 +446,7 @@ def one_process_rd(root, n_file, start_fileID, level, pos):
         iX = vq.RD_search_km(tX, X, level, pos, None, False)
         X[:,:,:,:vq.n_dim_list[level][pos]] -= iX[:, :,:,:vq.n_dim_list[level][pos]]
         write_pkl(root+'/'+str(fileID)+'.iR', X)
+    write_pkl(root+'/tmp_current_'+str(h)+'.vq', vq)
     # return cand_cent
 
 def process_rd(root, n_file, level, pos, n_jobs):
@@ -451,16 +455,29 @@ def process_rd(root, n_file, level, pos, n_jobs):
     n_files_per_task = n_file // n_jobs +1
     p_pool = []
     for start_fileID in range(n_jobs):
-        p = Process(target=one_process_rd, args=(root, min(n_files_per_task, n_file-start_fileID*n_files_per_task), start_fileID*n_files_per_task, level, pos, ))
+        p = Process(target=one_process_rd, args=(root, min(n_files_per_task, n_file-start_fileID*n_files_per_task), start_fileID*n_files_per_task, level, pos, start_fileID, ))
         p_pool.append(p)
     for i in range(n_jobs):
         p_pool[i].start()
         p_pool[i].join()
+    vq = load_pkl(root+'/current.vq')
+    def merge_dict(d, dd):
+        for k in dd:
+            d[k] = dd[k]
+        return d
+    for i in range(n_jobs):
+        vqt = load_pkl(root+'/tmp_current_'+str(i)+'.vq')
+        vq.max_dmse = merge_dict(vq.max_dmse, vqt.max_dmse)
+        vq.skip_th_range = merge_dict(vq.skip_th_range, vqt.skip_th_range)
+        vq.Huffman = merge_dict(vq.Huffman, vqt.Huffman)
+    return vq
+    
 
 def one_process_vqentropy(root, n_file, myhash, kmidx):
     vq = load_pkl(root+'/current.vq')
-    d = {}
+    
     for i in kmidx:
+        d = {}
         vq.isdistributed[2] = i
         vq.skip_th_range[myhash+'_'+str(vq.isdistributed[2])] = np.log2(np.max(vq.isdistributed[2])) / 80
         km = vq.myKMeans[myhash][vq.isdistributed[2]]
@@ -470,17 +487,18 @@ def one_process_vqentropy(root, n_file, myhash, kmidx):
         if np.max(km.inverse_predict(np.arange(nc).reshape(-1, 1))) == math.inf:
             print('Overflow', km.inverse_predict(np.arange(nc).reshape(-1, 1)))
         d[myhash+'_'+str(vq.isdistributed[2])] = VQEntropy(nc, km.inverse_predict(np.arange(nc).reshape(-1, 1))).fit_distributed(root+'/kmidx_'+str(i)+'/', 
-                                                                                                                                              n_file, 
-        write_pkl(root+'/'+myhash+'_'+str(i)+'.ec', d)                                                                                                                  skrange=self.max_dmse[myhash+'_'+str(self.isdistributed[2])])
+                                                                                                                                              n_file, skrange=vq.max_dmse[myhash+'_'+str(vq.isdistributed[2])])
 #                     continue
+        write_pkl(root+'/'+myhash+'_'+str(i)+'.ec', d)
+        # print('wrote '+root+'/'+myhash+'_'+str(i)+'.ec')
 
 # schedule the job based on n_clusters
 # linear relationship, if n_jobs=2, and the candidates kmeans with codewords 1024, 512, 256, 256
 # one job will be used to train 1024's ec
 # other three's ec will be trained by second job
-def process_vqqentropy(root, n_file, myhash):
+def process_vqqentropy(root, n_file, myhash, n_jobs):
     vq = load_pkl(root+'/current.vq')
-    km_list = len(vq.myKMeans[myhash])
+    km_list = vq.myKMeans[myhash]
     n_km = len(km_list)
     n_jobs = np.min([n_jobs, n_km, os.cpu_count()])
     kmidx, ct = [], np.zeros(n_jobs)
@@ -492,9 +510,10 @@ def process_vqqentropy(root, n_file, myhash):
         kmidx[pos].append(i)
         ct[pos] += nc
     p_pool = []
-    for _ in range(n_jobs):
+    for i in range(n_jobs):
         p = Process(target=one_process_vqentropy, args=(root, n_file, myhash, kmidx[i], ))
         p_pool.append(p)
     for i in range(n_jobs):
         p_pool[i].start()
         p_pool[i].join()
+

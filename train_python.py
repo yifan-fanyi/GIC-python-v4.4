@@ -6,25 +6,25 @@ import json
 import os
 from core.util.ReSample import resize
 # .iR residual, will be keep updated
+from multiprocessing import Process
 
 
-def vq_one_resolution(root, n_file, par):
-    
+def vq_one_resolution(root, n_file, par, n_jobs):
     n_clusters_list, n_dim_list = [],[]
     for win in par['level_list']:
         n_clusters_list += [par['n_cluster_list-'+str(win)]]
         n_dim_list += [par['n_dim_list-'+str(win)]]
-
     vq = VQ(n_clusters_list=n_clusters_list, 
             win_list=par['win_list'], 
             n_dim_list=n_dim_list, 
             transform_split=par['transform_split'],
             Lagrange_multip=par['Lagrange_multip'], acc_bpp=0)
-    vq.fit_distributed(root, n_file)
+    vq.fit_distributed(root, n_file, n_jobs=n_jobs)
     return vq
 
 
-def run(gpar, run_root, data_root, n_file):
+
+def run(gpar, run_root, data_root, n_file, n_jobs, resume=False):
     vq = {}
     resolution_list = gpar['resolution_list']
     for i in range(len(resolution_list)):
@@ -32,6 +32,8 @@ def run(gpar, run_root, data_root, n_file):
         par = gpar[str(resolution_list[i])]
         os.system('mkdir '+run_root+'/'+str(resolution_list[i]))
         if par['id'] == resolution_list[0]: 
+            if resume == True:
+                continue
             for fileID in range(n_file):
                 X = load_pkl(data_root+'/'+str(resolution_list[0])+'/'+str(fileID)+'.spatial_raw').astype('float32')-128
                 write_pkl(run_root+'/'+str(resolution_list[0])+'/'+str(fileID)+'.spatial_data', X)        
@@ -44,9 +46,8 @@ def run(gpar, run_root, data_root, n_file):
                 write_pkl(run_root+'/'+str(resolution_list[i])+'/'+str(fileID)+'.spatial_data', X-iX)
         vq[str(resolution_list[i])] = vq_one_resolution(run_root+'/'+str(resolution_list[i])+'/', 
                           n_file, 
-                          par)
-        with open(run_root+'/vq_'+str(resolution_list[i])+'.model', 'wb') as f:
-            pickle.dump(vq[str(resolution_list[i])], f, 4)
+                          par, n_jobs)
+        write_pkl(run_root+'/vq_'+str(resolution_list[i])+'.model', vq[str(resolution_list[i])])
     return vq
 
 def predict(vq_list, resolution_list, X_list):
@@ -65,11 +66,37 @@ def predict(vq_list, resolution_list, X_list):
 def predict_distributed(vq_list, resolution_list, root, n_file):
     os.system('mkdir '+root+'/predict'+str(resolution_list[-1]))
     for fileID in range(n_file):
-        X_list = []
+        X_list = {}
         for i in range(len(resolution_list)):
-            X_list.append(load_pkl(root+'/'+str(resolution_list[i])+'/'+str(fileID)+'.spatial_raw'))
+            X_list[str(resolution_list[i])] = load_pkl(root+'/'+str(resolution_list[i])+'/'+str(fileID)+'.spatial_data')
         iR = predict(vq_list, resolution_list, X_list)
-        write_pkl(root+'/predict'+str(resolution_list[-1])+'/'+str(fileID)+'.outiR', iR)
+        write_pkl(root+'/predict'+str(resolution_list[-1])+'/'+str(fileID)+'.iRspatial', iR)
+
+def one_process_predict_distributed(root, n_file, start_fileID, vq_list_file, resolution_list):
+    vq_list = load_pkl(root+'/'+vq_list_file+'.vq')
+    for fileID in range(start_fileID, start_fileID+n_file):
+        X_list = {}
+        for i in range(len(resolution_list)):
+            X_list[str(resolution_list[i])] = load_pkl(root+'/'+str(resolution_list[i])+'/'+str(fileID)+'.spatial_data')
+        iR = predict(vq_list, resolution_list, X_list)
+        write_pkl(root+'/'+str(resolution_list[-1])+'/'+str(fileID)+'.iRspatial', iR)
+
+    # return cand_cent
+
+def process_predict_distributed(root, n_file, vq_list, resoultion_list, n_jobs):
+    write_pkl(root+'/vq_list.vq', vq_list)
+    n_jobs = np.min([n_jobs, n_file, os.cpu_count()])
+    # print('n_jobs',n_jobs)
+    n_files_per_task = n_file // n_jobs +1
+    p_pool = []
+    for start_fileID in range(n_jobs):
+        p = Process(target=one_process_predict_distributed, args=(root, min(n_files_per_task, n_file-start_fileID*n_files_per_task), start_fileID*n_files_per_task, 'vq_list', resoultion_list, ))
+        p_pool.append(p)
+    for i in range(n_jobs):
+        p_pool[i].start()
+        p_pool[i].join()
+    
+
 
 def predict_resume(vq_list, resolution_list, X_list, iR):
     # resolution_list[0] inital_resolution, already performed VQ
@@ -83,18 +110,46 @@ def predict_resume(vq_list, resolution_list, X_list, iR):
 def predict_resume_distributed(vq_list, resolution_list, root, n_file):
     os.system('mkdir '+root+'/predict'+str(resolution_list[-1]))
     for fileID in range(n_file):
-        X_list = []
-        iR = load_pkl(root+'/predict'+str(resolution_list[0])+'/'+str(fileID)+'.outiR')
+        X_list = {}
+        iR = load_pkl(root+'/predict'+str(resolution_list[0])+'/'+str(fileID)+'.iRspatial')
         for i in range( len(resolution_list)):
-            X_list.append(load_pkl(root+'/'+str(resolution_list[i])+'/'+str(fileID)+'.spatial_raw'))
+            X_list[str(resolution_list[i])] = load_pkl(root+'/'+str(resolution_list[i])+'/'+str(fileID)+'.spatial_data')
         iR = predict_resume(vq_list, resolution_list, X_list, iR)
-        write_pkl(root+'/predict'+str(resolution_list[-1])+'/'+str(fileID)+'.outiR', iR)
+        write_pkl(root+'/predict'+str(resolution_list[-1])+'/'+str(fileID)+'.iRspatial', iR)
 
 if __name__ == "__main__":
     # X = load_pkl('./unit/data/'+'/'+str(256)+'/'+str(0)+'.spatial_raw')
     # print(np.sum(X))
-    f = open('./par/par.json',)
+    f = open('./par/par_unit.json',)
     par = json.load(f)
-    vq = run(par, run_root='/Users/alex/Desktop/unit/run/', data_root='/Users/alex/Desktop/unit/data/', n_file=11)
-    with open('model.pkl','wb') as f:
-        pickle.dump(vq, f)
+    par['resolution_list'] = [8,16]
+    run_root='/Users/alex/Desktop/unit/run/'
+    n_file = 11
+    n_jobs = 2
+    os.system('mkdir '+run_root)
+
+#     vq = run(par, 
+#              run_root=run_root, 
+#              data_root='/Users/alex/Desktop/unit/data/', 
+#              n_file=n_file,
+#              n_jobs=n_jobs)
+
+# # root, n_file, vq_list, resoultion_list, n_jobs
+#     process_predict_distributed(run_root, 
+#                                 n_file, 
+#                                 vq_list=[load_pkl(run_root+'/vq_8.model'),
+#                                          load_pkl(run_root+'/vq_16.model')], 
+#                                 resoultion_list=par['resolution_list'],
+#                                 n_jobs=n_jobs)
+    
+#     par['resolution_list'] = [16, 32] # when resume == True, first position will be the one last trained
+#     vq = run(par, 
+#              run_root='/Users/alex/Desktop/unit/run/', 
+#              data_root='/Users/alex/Desktop/unit/data/', 
+#              n_file=n_file, resume=True, n_jobs=n_jobs)
+    process_predict_distributed(run_root, 
+                                n_file, 
+                                vq_list={'8':load_pkl(run_root+'/vq_8.model'),
+                                         '16':load_pkl(run_root+'/vq_16.model')}, 
+                                resoultion_list=par['resolution_list'],
+                                n_jobs=n_jobs)

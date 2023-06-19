@@ -32,7 +32,7 @@ def one_process_dkm_kkz(centfile, root, n_file, start_fileID, processID):
             max_dst = dst[pos]
             cand_cent = X[pos]
     write_pkl(root+'/'+'cache_mydKMeans/'+centfile+'_'+str(processID)+'.cent', [max_dst, cand_cent])
-    print(max_dst, processID)
+    # print(max_dst, processID)
     # return cand_cent
 
 def init_one_cent(centfile, centID, root, n_file, n_jobs):

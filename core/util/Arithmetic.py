@@ -1,8 +1,8 @@
 # ppm mode not correct yet
 __version__ = "2.5.0"
 from core.util import myLog
-myLog('<Framework Version> core.Arithmetic -> %s'%__version__)
-print('<Framework Version> core.Arithmetic -> %s'%__version__)
+# myLog('<Framework Version> core.Arithmetic -> %s'%__version__)
+# print('<Framework Version> core.Arithmetic -> %s'%__version__)
 import os
 import numpy as np
 import contextlib

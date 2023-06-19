@@ -15,6 +15,9 @@ def load_pkl(file):
     with open(file, 'rb') as f:
         d = cPickle.load(f)
         if type(d) is np.ndarray:
+            s = file.split('.')[-1]
+            if s in ['idx', 'label']:
+                return d.astype('int16')
             return d.astype('float32')
         else:
             return d
