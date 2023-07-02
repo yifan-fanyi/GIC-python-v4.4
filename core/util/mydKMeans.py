@@ -10,6 +10,7 @@ from core.util import load_pkl, write_pkl
 
 def Cpredict(X, cent=None, returnDist=False):
     X = np.ascontiguousarray(X.astype('float32'))
+    cent = np.ascontiguousarray(cent.astype('float32'))
     index = faiss.IndexFlatL2(cent.shape[1]) 
     index.add(cent)             
     d, I = index.search(X, 1)
@@ -39,6 +40,8 @@ class mydKMeans:
         X = np.ascontiguousarray(X.astype('float32'))
         if cent is None:
             cent = np.ascontiguousarray(self.cluster_centers_.astype('float32'))
+        else:
+            cent = np.ascontiguousarray(cent.astype('float32'))
         index = faiss.IndexFlatL2(cent.shape[1]) 
         index.add(cent)             
         d, I = index.search(X, 1)
@@ -88,7 +91,7 @@ class mydKMeans:
         for i in range(self.n_clusters-1):
             # cand_cent = self.init_one_cent(i, root, n_file)
             # by separately call the kkz init helps to reduce the swap memory usage
-            os.system('python3 dKM_separable.py init current '+str(i)+' '+root+' '+str(n_file)+' '+str(n_jobs))
+            os.system('python3 dKM_separable.py init current '+str(i)+' '+root+' '+str(n_file)+' '+str(n_jobs//2))
             cand_cent = load_pkl(root+'/'+'cache_mydKMeans/current.cent')
             self.cluster_centers_.append(cand_cent)
         os.system('rm -rf '+root+'/'+'cache_mydKMeans')
@@ -120,7 +123,7 @@ class mydKMeans:
     def early_stop_checker(self):
         if VERBOSE == True:
             print('iter=%d, sum_square_error=%f'%(self.iter, self.mse))
-        if np.abs(self.mse-self.last_mse) < 1:
+        if np.abs(self.mse-self.last_mse) / np.max((1, self.n_vector)) < 1e-3:
             return True
         if self.last_mse > 0:
             assert self.mse < self.last_mse, 'converge error'
@@ -129,6 +132,9 @@ class mydKMeans:
         return False
 
     def fit(self, root, n_file, n_jobs):
+        n_vec_per_file = len(load_pkl(root+'/'+str(0)+'.data'))
+        self.n_vector = n_file * n_vec_per_file
+        print('n_vectors', self.n_vector)
         if self.stop == True:
             if self.KM is None:
                 if VERBOSE == True:
@@ -147,7 +153,10 @@ class mydKMeans:
                                                          'freq_vect':self.freq_vect,
                                                          'mse':self.mse,
                                                          'n_clusters':self.n_clusters})
-                multiprocess_dkm(n_jobs, root, n_file, self.cluster_centers_)
+                write_pkl(root+'/cent.pkl',self.cluster_centers_)
+                os.system('python3 dKM_separable.py fit '+str(n_jobs)+' '+root+' '+str(n_file)+' cent.pkl')
+                
+
                 dt = load_pkl(root+'/state_sum.state')
                 self.sum_vect += dt['sum_vect']
                 self.freq_vect += dt['freq_vect']
@@ -175,42 +184,7 @@ class mydKMeans:
         return self.KM.inverse_predict(label)
     
 
-def one_process_dkm(root, n_file, start_fileID, cent, processID):
-    d = load_pkl(root+'/state_tempelte.state')
-    for fileID in range(start_fileID, start_fileID+n_file):
-        X = load_pkl(root+'/'+str(fileID)+'.data')
-        label = Cpredict(X, cent)
-        for i in range(d['n_clusters']):
-            idx = label == i
-            if np.sum(idx) < 1:
-                continue
-            d['sum_vect'][i] += np.sum(X[idx].astype('float64'), axis=0)
-            d['freq_vect'][i] += (float)(np.sum(idx))
-            d['mse'] += np.sum(np.square(X[idx].astype('float64')-cent[i].astype('float64'))) # for early stop, Sum of Absolute Difference
-    write_pkl(root+'/state_'+str(processID)+'.state', d)
 
-
-def multiprocess_dkm(n_jobs, root, n_file, cent):
-    n_jobs = np.min([n_jobs, n_file, os.cpu_count()])
-    n_files_per_task = n_file // n_jobs +1
-    # print('n_jobs',n_jobs, 'n_files_per_task',n_files_per_task)
-    assert n_files_per_task*n_jobs >= n_file, 'not all files are processed'
-    p_pool = []
-    for start_fileID in range(n_jobs):
-        p = Process(target=one_process_dkm, args=(root, min(n_files_per_task, n_file-start_fileID*n_files_per_task), start_fileID*n_files_per_task, cent, start_fileID, ))
-        p_pool.append(p)
-    for i in range(n_jobs):
-        p_pool[i].start()
-        p_pool[i].join()
-    # aggregate
-    d = load_pkl(root+'/state_tempelte.state')
-    for processID in range(n_jobs):
-        dt = load_pkl(root+'/state_'+str(processID)+'.state')
-        os.system('rm -rf '+root+'/state_'+str(processID)+'.state')
-        d['sum_vect'] += dt['sum_vect']
-        d['freq_vect'] += dt['freq_vect']
-        d['mse'] += dt['mse']
-    write_pkl(root+'/state_sum.state', d)
 
 
 

@@ -1,0 +1,40 @@
+{
+    "resolution_list": [8, 32],
+    "8":{
+        "id":8,
+        "level_list": [8, 4, 2],
+        "win_list":[2,2,2],
+        "transform_split":1,
+        "Lagrange_multip":30000,
+
+        "n_cluster_list-8":[8,8,8,4096],
+        "n_dim_list-8":[2,4,6,-1],
+
+        "n_cluster_list-4":[8,4096],
+        "n_dim_list-4":[3,-1],
+
+        "n_cluster_list-2":[4096],
+        "n_dim_list-2":[-1]
+    },
+    "32":{"id":32,
+        "level_list": [32,16, 8, 4, 2],
+        "win_list":[2,2, 2,2,2],
+        "transform_split":1,
+        "Lagrange_multip":30000,
+
+        "n_cluster_list-32":[8, 8,4096],
+        "n_dim_list-32":[2,5,-1],
+
+        "n_cluster_list-16":[8,4096],
+        "n_dim_list-16":[3,-1],
+
+        "n_cluster_list-8":[8, 4096],
+        "n_dim_list-8":[3,-1],
+
+        "n_cluster_list-4":[8,4096],
+        "n_dim_list-4":[3,-1],
+
+        "n_cluster_list-2":[4096],
+        "n_dim_list-2":[-1]
+    }
+}

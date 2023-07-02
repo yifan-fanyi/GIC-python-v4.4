@@ -12,8 +12,9 @@ from multiprocessing import Process
 def vq_one_resolution(root, n_file, par, n_jobs):
     n_clusters_list, n_dim_list = [],[]
     for win in par['level_list']:
-        n_clusters_list += [par['n_cluster_list-'+str(win)]]
-        n_dim_list += [par['n_dim_list-'+str(win)]]
+        n_clusters_list = [par['n_cluster_list-'+str(win)]]+n_clusters_list
+        n_dim_list = [par['n_dim_list-'+str(win)]]+n_dim_list
+    print(n_clusters_list,n_dim_list)
     vq = VQ(n_clusters_list=n_clusters_list, 
             win_list=par['win_list'], 
             n_dim_list=n_dim_list, 
@@ -120,36 +121,45 @@ def predict_resume_distributed(vq_list, resolution_list, root, n_file):
 if __name__ == "__main__":
     # X = load_pkl('./unit/data/'+'/'+str(256)+'/'+str(0)+'.spatial_raw')
     # print(np.sum(X))
-    f = open('./par/par_unit.json',)
+    f = open('./par/par_low.json',)
     par = json.load(f)
-    par['resolution_list'] = [8,16]
-    run_root='/Users/alex/Desktop/unit/run/'
-    n_file = 11
-    n_jobs = 2
+    run_root='/Users/alex/Desktop/run/'
+    n_file = 1
+    n_jobs = np.min([32, n_file, os.cpu_count()])
+    print('n_jobs',n_jobs)
     os.system('mkdir '+run_root)
 
-#     vq = run(par, 
-#              run_root=run_root, 
-#              data_root='/Users/alex/Desktop/unit/data/', 
-#              n_file=n_file,
-#              n_jobs=n_jobs)
+    # vq = run(par, 
+    #          run_root=run_root, 
+    #          data_root='/home/alex/Desktop/Train/', 
+    #          n_file=n_file,
+    #          n_jobs=n_jobs)
 
-# # root, n_file, vq_list, resoultion_list, n_jobs
-#     process_predict_distributed(run_root, 
-#                                 n_file, 
-#                                 vq_list=[load_pkl(run_root+'/vq_8.model'),
-#                                          load_pkl(run_root+'/vq_16.model')], 
-#                                 resoultion_list=par['resolution_list'],
-#                                 n_jobs=n_jobs)
+# root, n_file, vq_list, resoultion_list, n_jobs
+    vq8 = load_pkl(run_root+'/vq_8.model')
+    vq8.Lagrange_multip = 1000
+    print(vq8.Lagrange_multip, vq8.Huffman)
+    X8 = load_pkl('/Users/alex/Desktop/proj/data/test/8/0.spatial_raw')
+    iR = predict({'8':vq8}, 
+            [8], 
+            {'8':X8})
+    iX = X8 - iR
+    X256 = load_pkl('/Users/alex/Desktop/proj/data/test/256/0.spatial_raw')
+    print(MSE(X256, resize(iX, 256)))
+    # process_predict_distributed(run_root, 
+    #                             n_file, 
+    #                             vq_list={'8':load_pkl(run_root+'/vq_8.model')}, 
+    #                             resoultion_list=par['resolution_list'],
+    #                             n_jobs=n_jobs)
     
-#     par['resolution_list'] = [16, 32] # when resume == True, first position will be the one last trained
-#     vq = run(par, 
-#              run_root='/Users/alex/Desktop/unit/run/', 
-#              data_root='/Users/alex/Desktop/unit/data/', 
-#              n_file=n_file, resume=True, n_jobs=n_jobs)
-    process_predict_distributed(run_root, 
-                                n_file, 
-                                vq_list={'8':load_pkl(run_root+'/vq_8.model'),
-                                         '16':load_pkl(run_root+'/vq_16.model')}, 
-                                resoultion_list=par['resolution_list'],
-                                n_jobs=n_jobs)
+    # par['resolution_list'] = [16, 32] # when resume == True, first position will be the one last trained
+    # vq = run(par, 
+    #          run_root='/Users/alex/Desktop/unit/run/', 
+    #          data_root='/Users/alex/Desktop/unit/data/', 
+    #          n_file=n_file, resume=True, n_jobs=n_jobs)
+    # process_predict_distributed(run_root, 
+    #                             n_file, 
+    #                             vq_list={'8':load_pkl(run_root+'/vq_8.model'),
+    #                                      '16':load_pkl(run_root+'/vq_16.model')}, 
+    #                             resoultion_list=par['resolution_list'],
+    #                             n_jobs=n_jobs)

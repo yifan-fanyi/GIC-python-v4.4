@@ -20,7 +20,7 @@ def toSpatial(cwSaab, iR, level, S,tX):
         if i > 0:
             iR = cwSaab.inverse_transform_one(iR, tX[i-1], i)
         else:
-            iR = cwSaab.inverse_transform_one(iR, None, i)
+            iR = cwSaab.inverse_trfjoinansform_one(iR, None, i)
     return iR
 # the km should sorted by n_codewords
 def split_km_subspace(KM, AC):
@@ -145,8 +145,10 @@ class VQ:
                     h1 = self.Huffman.get(myhash+'_'+str(self.isdistributed[2]), None)
                     h2 = self.Huffman.get(myhash+'_'+str(self.isdistributed[2])+'_h', None)
                     # print(h1, h2,'xxx')
+                print(S, self.isdistributed[0], h1, h2)
                 if h1 is not None:
                     st1 = h1.encode(label.reshape(S), idx.reshape(S))
+                print(len(st1), len(label.reshape(-1)[idx.reshape(-1)]), np.unique(label))
                 if h2 is not None:
                     b = h2.encode(label.reshape(-1)[idx.reshape(-1)])
                     if len(st1) > 1:
@@ -154,6 +156,7 @@ class VQ:
                             st1 = b
                     else:
                         st1 = b
+                print(len(st1))
                 if h1 is None and h2 is None:
                     #print('skip')
                     print('No entropy coder available')
@@ -162,7 +165,7 @@ class VQ:
                     idx = idx.astype('int16')
                     idx *= 0
                     st0 = ''
-            # print(len(st0), len(st1), S[0],' st')
+            print(len(st0), len(st1), S[0],idx.shape, ' st', ii[0])
             r = len(st0+st1) / S[0]
             # compute the distortion by zero out the skipped ones
             d = np.zeros_like(mse)
@@ -293,7 +296,9 @@ class VQ:
 #                     continue
         else:
             write_pkl(root+'/current.vq', self)
-            process_vqqentropy(root, n_file, myhash, self.n_jobs)
+            os.system('python3 dKM_separable.py vqentropy '+root+' '+str(n_file)+' '+myhash+' '+str(self.n_jobs))
+
+            # process_vqqentropy(root, n_file, myhash, self.n_jobs)
 
             for i in range(len(self.myKMeans[myhash])):
                 dt = load_pkl(root+'/'+myhash+'_'+str(i)+'.ec')
@@ -317,10 +322,15 @@ class VQ:
             write_pkl(root+'/'+str(fileID)+'.data', X.reshape(-1, X.shape[-1])[:, :self.n_dim_list[level][pos]])        
         nc = self.n_clusters_list[level][pos]
         dkm = mydKMeans(nc, self.n_dim_list[level][pos])
-        for i in range(1000000):
-            if i == 1000000-1:
-                dkm.stop = True
-            dkm.fit(root, n_file, self.n_jobs)
+        try:
+            dkm = load_pkl(root+'/dkm_'+myhash+'.dkm')
+        except:
+            for i in range(1000000):
+                if i == 1000000-1:
+                    dkm.stop = True
+                dkm.fit(root, n_file, self.n_jobs)
+            write_pkl(root+'/dkm_'+myhash+'.dkm', dkm)
+            print('write dkm', root+'/dkm_'+myhash+'.dkm')
         X = []
         for fileID in range(min(5,n_file)):
             X.append(load_pkl(root+'/'+str(fileID)+'.data'))
@@ -339,7 +349,9 @@ class VQ:
                 write_pkl(root+'/'+str(fileID)+'.iR', X)
         else:
             write_pkl(root+'/current.vq', self)
-            vq = process_rd(root, n_file, level, pos, self.n_jobs)
+            os.system('python3 dKM_separable.py rd '+root+' '+str(n_file)+' '+str(level)+' '+str(pos)+' '+str(self.n_jobs))
+            vq = load_pkl(root+'/current.vq')
+            # vq = process_rd(root, n_file, level, pos, self.n_jobs)
         self.max_dmse = vq.max_dmse
         self.skip_th_range = vq.skip_th_range
         self.Huffman = vq.Huffman
@@ -436,84 +448,4 @@ class VQ:
             else:
                 iR = self.cwSaab.inverse_transform_one(iR, None, level)            
         return iR
-
-def one_process_rd(root, n_file, start_fileID, level, pos, h):
-    vq = load_pkl(root+'/current.vq')
-    for fileID in range(start_fileID, start_fileID+n_file):
-        vq.isdistributed = [fileID, root, -1]
-        X = load_pkl(root+'/'+str(fileID)+'.iR')
-        tX = load_pkl(root+'/'+str(fileID)+'.cwsaab')
-        iX = vq.RD_search_km(tX, X, level, pos, None, False)
-        X[:,:,:,:vq.n_dim_list[level][pos]] -= iX[:, :,:,:vq.n_dim_list[level][pos]]
-        write_pkl(root+'/'+str(fileID)+'.iR', X)
-    write_pkl(root+'/tmp_current_'+str(h)+'.vq', vq)
-    # return cand_cent
-
-def process_rd(root, n_file, level, pos, n_jobs):
-    n_jobs = np.min([n_jobs, n_file, os.cpu_count()])
-    # print('n_jobs',n_jobs)
-    n_files_per_task = n_file // n_jobs +1
-    p_pool = []
-    for start_fileID in range(n_jobs):
-        p = Process(target=one_process_rd, args=(root, min(n_files_per_task, n_file-start_fileID*n_files_per_task), start_fileID*n_files_per_task, level, pos, start_fileID, ))
-        p_pool.append(p)
-    for i in range(n_jobs):
-        p_pool[i].start()
-        p_pool[i].join()
-    vq = load_pkl(root+'/current.vq')
-    def merge_dict(d, dd):
-        for k in dd:
-            d[k] = dd[k]
-        return d
-    for i in range(n_jobs):
-        vqt = load_pkl(root+'/tmp_current_'+str(i)+'.vq')
-        vq.max_dmse = merge_dict(vq.max_dmse, vqt.max_dmse)
-        vq.skip_th_range = merge_dict(vq.skip_th_range, vqt.skip_th_range)
-        vq.Huffman = merge_dict(vq.Huffman, vqt.Huffman)
-    return vq
-    
-
-def one_process_vqentropy(root, n_file, myhash, kmidx):
-    vq = load_pkl(root+'/current.vq')
-    
-    for i in kmidx:
-        d = {}
-        vq.isdistributed[2] = i
-        vq.skip_th_range[myhash+'_'+str(vq.isdistributed[2])] = np.log2(np.max(vq.isdistributed[2])) / 80
-        km = vq.myKMeans[myhash][vq.isdistributed[2]]
-        nc = km.n_clusters
-        d[myhash+'_'+str(vq.isdistributed[2])+'_h'] = Huffman().fit_distributed(root+'/kmidx_'+str(i)+'/', n_file, nc)
-        # print(self.max_dmse)
-        if np.max(km.inverse_predict(np.arange(nc).reshape(-1, 1))) == math.inf:
-            print('Overflow', km.inverse_predict(np.arange(nc).reshape(-1, 1)))
-        d[myhash+'_'+str(vq.isdistributed[2])] = VQEntropy(nc, km.inverse_predict(np.arange(nc).reshape(-1, 1))).fit_distributed(root+'/kmidx_'+str(i)+'/', 
-                                                                                                                                              n_file, skrange=vq.max_dmse[myhash+'_'+str(vq.isdistributed[2])])
-#                     continue
-        write_pkl(root+'/'+myhash+'_'+str(i)+'.ec', d)
-        # print('wrote '+root+'/'+myhash+'_'+str(i)+'.ec')
-
-# schedule the job based on n_clusters
-# linear relationship, if n_jobs=2, and the candidates kmeans with codewords 1024, 512, 256, 256
-# one job will be used to train 1024's ec
-# other three's ec will be trained by second job
-def process_vqqentropy(root, n_file, myhash, n_jobs):
-    vq = load_pkl(root+'/current.vq')
-    km_list = vq.myKMeans[myhash]
-    n_km = len(km_list)
-    n_jobs = np.min([n_jobs, n_km, os.cpu_count()])
-    kmidx, ct = [], np.zeros(n_jobs)
-    for i in range(n_jobs):
-        kmidx.append([])
-    for i in range(n_km):
-        nc = km_list[i].n_clusters
-        pos = np.argmin(ct)
-        kmidx[pos].append(i)
-        ct[pos] += nc
-    p_pool = []
-    for i in range(n_jobs):
-        p = Process(target=one_process_vqentropy, args=(root, n_file, myhash, kmidx[i], ))
-        p_pool.append(p)
-    for i in range(n_jobs):
-        p_pool[i].start()
-        p_pool[i].join()
 
